@@ -42,14 +42,10 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
 }) => {
   const [student, setStudent] = useState<Student | null>(null);
   const [approvedItems, setApprovedItems] = useState<EnrichedLogItem[]>([]);
-  const [totalActivitiesCount, setTotalActivitiesCount] = useState(0);
+  const [totalApprovedHours, setTotalApprovedHours] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [criteriaType, setCriteriaType] = useState<'graduation' | 'yearly'>('graduation');
 
-  // Criteria thresholds in activities
-  const GRADUATION_REQUIRED_ACTIVITIES = 18;
-  const YEARLY_REQUIRED_ACTIVITIES = 5;
-  const requiredActivities = criteriaType === 'graduation' ? GRADUATION_REQUIRED_ACTIVITIES : YEARLY_REQUIRED_ACTIVITIES;
+  const REQUIRED_HOURS = 100;
 
   useEffect(() => {
     if (isOpen && studentId) {
@@ -86,15 +82,18 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
 
       const enriched: EnrichedLogItem[] = [];
 
+      const countedActivities = new Set<string>();
       for (const log of studentLogs) {
         const ref = refMap.get(log.id) || await db.reflections.where('logId').equals(log.id).first();
         const act = actMap.get(log.activityId);
 
         // Only count if reflection is officially approved by Assistant Dean (Step 7) OR execStatus is approved
-        const isApproved = ref?.status === 'approved' || log.execStatus === 'approved';
+        const isApproved = ref?.status === 'approved' && log.execStatus === 'approved';
 
-        if (isApproved) {
-          const hours = act?.hours || 3;
+        if (isApproved && act && !countedActivities.has(log.activityId)) {
+          const hours = Number(act.hours);
+          if (!Number.isFinite(hours) || hours <= 0) continue;
+          countedActivities.add(log.activityId);
           enriched.push({
             id: log.id,
             activityId: log.activityId,
@@ -112,7 +111,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
       enriched.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       setApprovedItems(enriched);
-      setTotalActivitiesCount(enriched.length);
+      setTotalApprovedHours(enriched.reduce((sum, item) => sum + item.hours, 0));
     } catch (e) {
       console.error('Error loading transcript:', e);
     } finally {
@@ -126,8 +125,8 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
 
   if (!isOpen) return null;
 
-  const isQualified = totalActivitiesCount >= requiredActivities;
-  const activitiesRemaining = Math.max(0, requiredActivities - totalActivitiesCount);
+  const isQualified = totalApprovedHours >= REQUIRED_HOURS;
+  const hoursRemaining = Math.max(0, REQUIRED_HOURS - totalApprovedHours);
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
@@ -146,32 +145,12 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                 ระบบออกใบรับรองทรานสคริปต์กิจกรรม (Activity Transcript)
               </h2>
               <p className="text-[11px] font-bold text-stone-500">
-                ตรวจสอบเงื่อนไขการสำเร็จการศึกษา (เกณฑ์ 18 กิจกรรมบังคับ)
+                ตรวจสอบชั่วโมงกิจกรรมที่อนุมัติแล้ว (เกณฑ์ 100 ชั่วโมง)
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            {/* Criteria toggle */}
-            <div className="inline-flex border-2 border-[#18181B] rounded-lg overflow-hidden text-[11px] font-black">
-              <button
-                onClick={() => setCriteriaType('graduation')}
-                className={`px-2.5 py-1 transition-colors ${
-                  criteriaType === 'graduation' ? 'bg-[#18181B] text-[#FACC15]' : 'bg-white text-stone-700'
-                }`}
-              >
-                เกณฑ์จบการศึกษา (18 กิจกรรม)
-              </button>
-              <button
-                onClick={() => setCriteriaType('yearly')}
-                className={`px-2.5 py-1 border-l border-[#18181B] transition-colors ${
-                  criteriaType === 'yearly' ? 'bg-[#18181B] text-[#FACC15]' : 'bg-white text-stone-700'
-                }`}
-              >
-                เกณฑ์รอบปี (5 กิจกรรม)
-              </button>
-            </div>
-
             {/* Print button */}
             <button
               disabled={!isQualified}
@@ -206,7 +185,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                   ✓ ผ่านเกณฑ์การเข้าร่วมกิจกรรมสมบูรณ์ (QUALIFIED)
                 </div>
                 <div className="text-xs text-emerald-800 mt-0.5 font-medium">
-                  นักศึกษาได้สะสมกิจกรรมครบถ้วน <strong>{totalActivitiesCount} / {requiredActivities} กิจกรรม</strong> ผ่านการอนุมัติครบทั้ง 2 ขั้นตอนโดยผู้ช่วยคณบดีฝ่ายพัฒนานักศึกษา สามารถออกใบรายงานผลการเข้าร่วมกิจกรรมสะสมได้อย่างเป็นทางการ
+                  นักศึกษามีชั่วโมงกิจกรรมที่อนุมัติครบทั้ง 2 ขั้นตอน <strong>{totalApprovedHours} / {REQUIRED_HOURS} ชั่วโมง</strong> จาก {approvedItems.length} กิจกรรม
                 </div>
               </div>
             </div>
@@ -218,18 +197,18 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                   <span>❌ กิจกรรมยังไม่ครบตามเกณฑ์ - ไม่อนุญาตให้ออกใบรับรอง (INCOMPLETE)</span>
                 </div>
                 <div className="text-xs text-rose-800 mt-1 font-medium leading-relaxed">
-                  ตามข้อบังคับมหาวิทยาลัยนครพนมว่าด้วยกิจกรรมพัฒนานักศึกษา นักศึกษาต้องสะสมกิจกรรมที่ผ่านการอนุมัติอย่างน้อย <strong>{requiredActivities} กิจกรรม</strong> <br />
-                  ปัจจุบันนักศึกษาคนนี้มีกิจกรรมที่อนุมัติแล้ว <strong>{totalActivitiesCount} กิจกรรม</strong> (ยังขาดอีก <strong className="text-rose-900 underline">{activitiesRemaining} กิจกรรม</strong>)
+                  ต้องสะสมกิจกรรมที่ผ่านการอนุมัติอย่างน้อย <strong>{REQUIRED_HOURS} ชั่วโมง</strong> <br />
+                  ปัจจุบันมี <strong>{totalApprovedHours} ชั่วโมง</strong> (ยังขาดอีก <strong className="text-rose-900 underline">{hoursRemaining} ชั่วโมง</strong>)
                 </div>
                 <div className="mt-3 w-full bg-stone-200 h-2.5 rounded-full overflow-hidden border border-rose-300">
                   <div 
                     className="bg-rose-500 h-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.round((totalActivitiesCount / requiredActivities) * 100))}%` }}
+                    style={{ width: `${Math.min(100, Math.round((totalApprovedHours / REQUIRED_HOURS) * 100))}%` }}
                   />
                 </div>
                 <div className="text-[10px] font-bold text-rose-700 mt-1 flex justify-between">
-                  <span>สะสมแล้ว {totalActivitiesCount} กิจกรรม</span>
-                  <span>เป้าหมาย {requiredActivities} กิจกรรม ({Math.round((totalActivitiesCount / requiredActivities) * 100)}%)</span>
+                  <span>สะสมแล้ว {totalApprovedHours} ชั่วโมง</span>
+                  <span>เป้าหมาย {REQUIRED_HOURS} ชั่วโมง ({Math.round((totalApprovedHours / REQUIRED_HOURS) * 100)}%)</span>
                 </div>
               </div>
             </div>
@@ -287,7 +266,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
             <div>
               <span className="font-bold text-stone-500">สถานะเกณฑ์กิจกรรม: </span>
               <span className={`font-black uppercase ${isQualified ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {isQualified ? '✓ ผ่านเกณฑ์สำเร็จการศึกษา' : `✗ ยังไม่ครบ (ขาดอีก ${activitiesRemaining} กิจกรรม)`}
+                {isQualified ? '✓ ผ่านเกณฑ์ชั่วโมงกิจกรรม' : `✗ ยังไม่ครบ (ขาดอีก ${hoursRemaining} ชั่วโมง)`}
               </span>
             </div>
           </div>
@@ -310,7 +289,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                     <th className="p-2 border-r border-stone-400">ชื่อโครงการ / กิจกรรม</th>
                     <th className="p-2 border-r border-stone-400">หมวดหมู่กิจกรรม</th>
                     <th className="p-2 border-r border-stone-400 text-center w-24">วันที่จัด</th>
-                    <th className="p-2 border-r border-stone-400 text-center w-24">การนับกิจกรรม</th>
+                    <th className="p-2 border-r border-stone-400 text-center w-24">ชั่วโมง</th>
                     <th className="p-2 text-center w-16">ผลการประเมิน</th>
                   </tr>
                 </thead>
@@ -330,7 +309,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                         {item.date}
                       </td>
                       <td className="p-2 border-r border-stone-400 text-center font-mono font-bold text-stone-900">
-                        1 กิจกรรม
+                        {item.hours} ชั่วโมง
                       </td>
                       <td className="p-2 text-center font-black text-emerald-700">
                         {item.grade}
@@ -341,13 +320,13 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                 <tfoot>
                   <tr className="bg-stone-100 border-t-2 border-stone-400 font-black text-xs">
                     <td colSpan={4} className="p-2.5 text-right border-r border-stone-400">
-                      รวมจำนวนกิจกรรมสะสมสุทธิ (TOTAL ACTIVITIES COMPLETED):
+                      รวมชั่วโมงกิจกรรมที่อนุมัติ:
                     </td>
                     <td className="p-2.5 text-center font-mono text-sm text-[#2563EB] border-r border-stone-400">
-                      {totalActivitiesCount} / {requiredActivities}
+                      {totalApprovedHours} / {REQUIRED_HOURS}
                     </td>
                     <td className="p-2.5 text-center text-stone-800">
-                      กิจกรรม
+                      ชั่วโมง
                     </td>
                   </tr>
                 </tfoot>
