@@ -155,7 +155,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
             <button
               disabled={!isQualified}
               onClick={handlePrint}
-              className={`px-4 py-1.5 rounded-xl border-2 border-[#18181B] text-xs font-black flex items-center gap-1.5 transition-all ${
+              className={`min-h-11 px-4 py-2 rounded-xl border-2 border-[#18181B] text-xs font-black flex items-center gap-1.5 transition-all ${
                 isQualified 
                   ? 'bg-[#FACC15] hover:bg-amber-400 text-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
                   : 'bg-stone-200 text-stone-400 cursor-not-allowed opacity-60'
@@ -168,7 +168,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
 
             <button
               onClick={onClose}
-              className="p-1.5 bg-stone-100 hover:bg-rose-100 border-2 border-transparent hover:border-[#18181B] rounded-xl transition-all"
+              className="min-w-11 min-h-11 flex items-center justify-center bg-stone-100 hover:bg-rose-100 border-2 border-transparent hover:border-[#18181B] rounded-xl transition-all"
             >
               <X className="w-5 h-5 text-[#18181B]" />
             </button>
@@ -282,7 +282,8 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                 ยังไม่มีรายการกิจกรรมที่ผ่านการอนุมัติสมบูรณ์ในระบบ
               </div>
             ) : (
-              <table className="w-full text-left text-xs border-collapse border border-stone-400">
+              <div className="overflow-x-auto" role="region" aria-label="รายการกิจกรรมที่อนุมัติ">
+              <table className="w-full min-w-[680px] print:min-w-0 text-left text-xs border-collapse border border-stone-400">
                 <thead>
                   <tr className="bg-stone-100 text-stone-800 font-bold border-b border-stone-400 text-[11px]">
                     <th className="p-2 border-r border-stone-400 w-8 text-center">ลำดับ</th>
@@ -331,6 +332,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
                   </tr>
                 </tfoot>
               </table>
+              </div>
             )}
           </div>
 
@@ -341,7 +343,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
               <div className="text-[11px] font-bold text-stone-600">ผู้ตรวจสอบข้อมูล</div>
               <div className="border-b border-dashed border-stone-400 w-36 mx-auto" />
               <div className="leading-tight">
-                <div className="font-bold">( นายชาญชัย มิ่งขวัญ )</div>
+                <div className="font-bold">( ........................................ )</div>
                 <div className="text-[10px] text-stone-500 mt-0.5">เจ้าหน้าที่งานพัฒนานักศึกษา</div>
               </div>
             </div>
@@ -351,7 +353,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
               <div className="text-[11px] font-bold text-stone-600">ผู้ตรวจอนุมัติบันทึก</div>
               <div className="border-b border-dashed border-stone-400 w-44 mx-auto" />
               <div className="leading-tight">
-                <div className="font-bold">( ผศ.ดร.ศรีสุดา ด้วงโต้ด )</div>
+                <div className="font-bold">( ........................................ )</div>
                 <div className="text-[10px] text-stone-500 mt-0.5">ผู้ช่วยคณบดีฝ่ายพัฒนานักศึกษา</div>
               </div>
             </div>
@@ -361,7 +363,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
               <div className="text-[11px] font-bold text-stone-600">ผู้อนุมัติการสำเร็จกิจกรรม</div>
               <div className="border-b border-dashed border-stone-400 w-40 mx-auto" />
               <div className="leading-tight">
-                <div className="font-bold">( รศ.ดร.คณบดี คณะครุศาสตร์ )</div>
+                <div className="font-bold">( ........................................ )</div>
                 <div className="text-[10px] text-stone-500 mt-0.5">คณบดีคณะครุศาสตร์</div>
               </div>
             </div>
@@ -374,7 +376,7 @@ export const ActivityTranscriptModal: React.FC<ActivityTranscriptModalProps> = (
             </div>
             <div className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>เอกสารฉบับนี้ออกโดยระบบบริหารจัดการกิจกรรม คณะครุศาสตร์ ม.นครพนม (รหัสตรวจ: NPU-ACT-{studentId}-{Date.now().toString().slice(-6)})</span>
+              <span>โปรดตรวจสอบข้อมูลและลงนามรับรองก่อนใช้เป็นเอกสารทางการ</span>
             </div>
           </div>
 
