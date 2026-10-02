@@ -38,16 +38,16 @@ interface MajorSummary {
   major: string;
   totalStudents: number;
   activeStudents: number;
-  totalApprovedActivities: number;
-  avgActivitiesPerStudent: number;
+  totalApprovedHours: number;
+  avgHoursPerStudent: number;
   qualifiedStudentsCount: number;
 }
 
 interface YearSummary {
   year: number;
   totalStudents: number;
-  totalApprovedActivities: number;
-  avgActivities: number;
+  totalApprovedHours: number;
+  avgHours: number;
   qualifiedCount: number;
 }
 
@@ -75,7 +75,7 @@ export const ReportsView: React.FC = () => {
   // Modal State for Transcript
   const [selectedStudentForTranscript, setSelectedStudentForTranscript] = useState<string | null>(null);
 
-  const GRADUATION_ACTIVITIES = 18;
+  const REQUIRED_HOURS = 100;
 
   useEffect(() => {
     loadAllReportsData();
@@ -122,9 +122,9 @@ export const ReportsView: React.FC = () => {
           entry.totalCheckIns += 1;
           const ref = refMap.get(log.id);
 
-          if (ref?.status === 'approved' || log.execStatus === 'approved') {
+          if (ref?.status === 'approved' && log.execStatus === 'approved') {
             entry.approvedCount += 1;
-            entry.approvedHours += 1;
+            entry.approvedHours += Number(actMap.get(log.activityId)?.hours || 0);
           } else if (ref && (ref.status === 'pending_step1' || ref.status === 'pending_step2')) {
             entry.inReviewCount += 1;
           } else {
@@ -135,17 +135,17 @@ export const ReportsView: React.FC = () => {
 
       const studentList = Array.from(stMap.values()).map(item => ({
         ...item,
-        isQualified: item.approvedCount >= GRADUATION_ACTIVITIES
+        isQualified: item.approvedHours >= REQUIRED_HOURS
       }));
 
       // Sort by approved count descending
-      studentList.sort((a, b) => b.approvedCount - a.approvedCount);
+      studentList.sort((a, b) => b.approvedHours - a.approvedHours);
       setStudentsSummaries(studentList);
 
       // 2. Calculate Major Summaries (รายสาขา)
       const majorGroups = new Map<string, { students: StudentSummary[] }>();
       studentList.forEach(st => {
-        const major = st.student.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา';
+        const major = st.student.major || 'ไม่ระบุสาขาวิชา';
         if (!majorGroups.has(major)) {
           majorGroups.set(major, { students: [] });
         }
@@ -156,18 +156,18 @@ export const ReportsView: React.FC = () => {
       majorGroups.forEach((val, majorName) => {
         const total = val.students.length;
         const active = val.students.filter(s => s.totalCheckIns > 0).length;
-        const totalActivitiesApproved = val.students.reduce((acc, curr) => acc + curr.approvedCount, 0);
+        const totalApprovedHours = val.students.reduce((acc, curr) => acc + curr.approvedHours, 0);
         const qualified = val.students.filter(s => s.isQualified).length;
         majors.push({
           major: majorName,
           totalStudents: total,
           activeStudents: active,
-          totalApprovedActivities: totalActivitiesApproved,
-          avgActivitiesPerStudent: total > 0 ? Number((totalActivitiesApproved / total).toFixed(1)) : 0,
+          totalApprovedHours,
+          avgHoursPerStudent: total > 0 ? Number((totalApprovedHours / total).toFixed(1)) : 0,
           qualifiedStudentsCount: qualified
         });
       });
-      majors.sort((a, b) => b.totalApprovedActivities - a.totalApprovedActivities);
+      majors.sort((a, b) => b.totalApprovedHours - a.totalApprovedHours);
       setMajorSummaries(majors);
 
       // 3. Calculate Year Summaries (รายชั้นปี)
@@ -186,13 +186,13 @@ export const ReportsView: React.FC = () => {
       const years: YearSummary[] = [];
       yearGroups.forEach((stList, y) => {
         const total = stList.length;
-        const totalActivitiesApproved = stList.reduce((acc, curr) => acc + curr.approvedCount, 0);
+        const totalApprovedHours = stList.reduce((acc, curr) => acc + curr.approvedHours, 0);
         const qualified = stList.filter(s => s.isQualified).length;
         years.push({
           year: y,
           totalStudents: total,
-          totalApprovedActivities: totalActivitiesApproved,
-          avgActivities: total > 0 ? Number((totalActivitiesApproved / total).toFixed(1)) : 0,
+          totalApprovedHours,
+          avgHours: total > 0 ? Number((totalApprovedHours / total).toFixed(1)) : 0,
           qualifiedCount: qualified
         });
       });
@@ -215,7 +215,7 @@ export const ReportsView: React.FC = () => {
 
           const ref = refMap.get(l.id);
           if (ref?.submittedAt) kpaCount += 1;
-          if (ref?.status === 'approved' || l.execStatus === 'approved') appCount += 1;
+          if (ref?.status === 'approved' && l.execStatus === 'approved') appCount += 1;
         });
 
         return {
@@ -391,8 +391,8 @@ export const ReportsView: React.FC = () => {
                     <th className="p-3 border-r border-stone-300">รหัสนักศึกษา / ชื่อ-สกุล</th>
                     <th className="p-3 border-r border-stone-300">สาขาวิชา / ชั้นปี</th>
                     <th className="p-3 border-r border-stone-300 text-center">กิจกรรมที่เช็คอิน</th>
-                    <th className="p-3 border-r border-stone-300 text-center">กิจกรรมสะสม</th>
-                    <th className="p-3 border-r border-stone-300 text-center">สถานะเกณฑ์จบ (18 กิจกรรม)</th>
+                    <th className="p-3 border-r border-stone-300 text-center">ชั่วโมงที่อนุมัติ</th>
+                    <th className="p-3 border-r border-stone-300 text-center">สถานะเกณฑ์จบ (100 ชั่วโมง)</th>
                     <th className="p-3 text-center w-36">การออก Transcript</th>
                   </tr>
                 </thead>
@@ -412,8 +412,8 @@ export const ReportsView: React.FC = () => {
                         </td>
 
                         <td className="p-3 border-r border-stone-200">
-                          <div className="font-bold text-stone-900">{item.student.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา'}</div>
-                          <div className="text-[10px] text-stone-500 font-bold">ชั้นปีที่ {item.student.year || 4} • คณะครุศาสตร์</div>
+                          <div className="font-bold text-stone-900">{item.student.major || 'ไม่ระบุสาขาวิชา'}</div>
+                          <div className="text-[10px] text-stone-500 font-bold">ชั้นปีที่ {item.student.year || 'ไม่ระบุ'} • คณะครุศาสตร์</div>
                         </td>
 
                         <td className="p-3 border-r border-stone-200 text-center font-mono font-bold text-stone-700">
@@ -422,9 +422,9 @@ export const ReportsView: React.FC = () => {
 
                         <td className="p-3 border-r border-stone-200 text-center">
                           <span className="font-mono font-black text-sm text-[#2563EB]">
-                            {item.approvedCount}
+                            {item.approvedHours}
                           </span>
-                          <span className="text-[10px] text-stone-500 font-bold ml-1">/ 18 กิจกรรม</span>
+                          <span className="text-[10px] text-stone-500 font-bold ml-1">/ 100 ชั่วโมง</span>
                         </td>
 
                         <td className="p-3 border-r border-stone-200 text-center">
@@ -436,7 +436,7 @@ export const ReportsView: React.FC = () => {
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-100 text-rose-900 rounded-lg text-[10px] font-black border border-rose-300">
                               <Lock className="w-3.5 h-3.5 text-rose-600" />
-                              <span>ขาดอีก {GRADUATION_ACTIVITIES - item.approvedCount} กิจกรรม</span>
+                              <span>ขาดอีก {Math.max(0, REQUIRED_HOURS - item.approvedHours)} ชั่วโมง</span>
                             </span>
                           )}
                         </td>
@@ -495,12 +495,12 @@ export const ReportsView: React.FC = () => {
                     <div className="text-base font-black text-emerald-700">{m.activeStudents} คน</div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-stone-500 font-bold">กิจกรรมสะสมรวม</div>
-                    <div className="text-base font-black text-[#2563EB]">{m.totalApprovedActivities} กิจกรรม</div>
+                    <div className="text-[10px] text-stone-500 font-bold">ชั่วโมงอนุมัติรวม</div>
+                    <div className="text-base font-black text-[#2563EB]">{m.totalApprovedHours} ชั่วโมง</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-stone-500 font-bold">เฉลี่ยต่อคน</div>
-                    <div className="text-base font-black text-stone-900">{m.avgActivitiesPerStudent} กิจกรรม/คน</div>
+                    <div className="text-base font-black text-stone-900">{m.avgHoursPerStudent} ชั่วโมง/คน</div>
                   </div>
                 </div>
 
@@ -540,15 +540,15 @@ export const ReportsView: React.FC = () => {
 
               <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-1 text-xs font-bold">
                 <div className="flex justify-between">
-                  <span className="text-stone-500">กิจกรรมสะสมรวม:</span>
-                  <span className="font-black text-[#2563EB]">{y.totalApprovedActivities} กิจกรรม</span>
+                  <span className="text-stone-500">ชั่วโมงอนุมัติรวม:</span>
+                  <span className="font-black text-[#2563EB]">{y.totalApprovedHours} ชั่วโมง</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">เฉลี่ยต่อคน:</span>
-                  <span className="font-black text-stone-900">{y.avgActivities} กิจกรรม</span>
+                  <span className="font-black text-stone-900">{y.avgHours} ชั่วโมง</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-stone-500">สำเร็จเกณฑ์ 18 กิจกรรม:</span>
+                  <span className="text-stone-500">สำเร็จเกณฑ์ 100 ชั่วโมง:</span>
                   <span className="font-black text-emerald-700">{y.qualifiedCount} คน</span>
                 </div>
               </div>
@@ -556,11 +556,11 @@ export const ReportsView: React.FC = () => {
               <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
                 <div 
                   className="bg-[#EA580C] h-full"
-                  style={{ width: `${Math.min(100, Math.round((y.avgActivities / GRADUATION_ACTIVITIES) * 100))}%` }}
+                  style={{ width: `${Math.min(100, Math.round((y.avgHours / REQUIRED_HOURS) * 100))}%` }}
                 />
               </div>
               <div className="text-[10px] text-stone-500 font-bold text-right">
-                เป้าหมาย 18 กิจกรรม ({Math.min(100, Math.round((y.avgActivities / GRADUATION_ACTIVITIES) * 100))}%)
+                เป้าหมาย 100 ชั่วโมง ({Math.min(100, Math.round((y.avgHours / REQUIRED_HOURS) * 100))}%)
               </div>
             </div>
           ))}

@@ -35,7 +35,7 @@ export const saveActivity = async (activity: Activity, existing: boolean): Promi
   if (!activity.name.trim() || !activity.date) throw new Error('กรุณาระบุชื่อและวันที่จัดกิจกรรม');
   if ((activity.hours ?? 0) < 0) throw new Error('ชั่วโมงกิจกรรมต้องไม่ติดลบ');
   if (activity.endDate && activity.endDate < activity.date) throw new Error('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
-  if (activity.startTime && activity.endTime && activity.endDate === activity.date && activity.endTime <= activity.startTime) {
+  if (activity.startTime && activity.endTime && (!activity.endDate || activity.endDate === activity.date) && activity.endTime <= activity.startTime) {
     throw new Error('เวลาสิ้นสุดต้องหลังเวลาเริ่ม');
   }
 

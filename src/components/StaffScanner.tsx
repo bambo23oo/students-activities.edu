@@ -1048,8 +1048,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="font-bold text-stone-700">
                     {isSupabaseConfigured() 
-                      ? 'ระบบเชื่อมต่อคลาวด์ พร้อมซิงก์เรียลไทม์พร้อมกันหลายเครื่อง (400-500 คน)' 
-                      : 'ทำงานโหมดออฟไลน์ความเร็วสูง (ข้อมูลจะถูกจัดเก็บในเครื่อง)'}
+                      ? 'เชื่อมต่อฐานข้อมูลกลางแล้ว'
+                      : 'ยังไม่เชื่อมต่อฐานข้อมูลกลาง'}
                   </span>
                 </div>
                 {pendingSyncCount > 0 && (
@@ -1071,35 +1071,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               </div>
             </div>
 
-            {/* UX Best Practices Highlights Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-[#FAF7F0] rounded-xl border-2 border-[#18181B]">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-white border-2 border-[#18181B] text-[#18181B] flex items-center justify-center shrink-0 mt-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-black text-xs">
-                  🔫
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-[#18181B]">Continuous Flow สำหรับเครื่องยิง</h4>
-                  <p className="text-[11px] text-stone-600 font-medium">Auto-focus เสมอ ยิงรัวต่อเนื่องโดยไม่ต้องแตะเมาส์ ไร้ Pop-up ขวางทาง</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-white border-2 border-[#18181B] text-[#18181B] flex items-center justify-center shrink-0 mt-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-black text-xs">
-                  📱
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-[#18181B]">Mobile Camera & Flashlight</h4>
-                  <p className="text-[11px] text-stone-600 font-medium">สลับกล้องหน้า/หลัง และเปิดไฟฉายช่วยสแกนในที่แสงน้อยได้ทันที</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Strict Acceptance Badge */}
-            <div className="flex items-center gap-2 p-3 bg-emerald-50 border-2 border-emerald-300 rounded-xl text-emerald-900 text-xs font-bold">
-              <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span>ระบบป้องกันข้อมูลซ้ำซ้อน (Single Check-in): ยิงซ้ำจะแจ้งเตือนทันทีด้วยเสียงบัซและหน้าจอสีส้ม</span>
-            </div>
-
             {/* Main Action Buttons */}
             <div className="space-y-2.5">
               <button 
@@ -1108,19 +1079,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 className="w-full py-3.5 px-7 bg-[#18181B] hover:bg-stone-800 text-[#FACC15] rounded-xl font-bold text-xs sm:text-sm border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Play className="w-4 h-4 text-[#FACC15]" />
-                <span>เปิดสถานีสแกนเช็คอิน (Start Scanner Station)</span>
+                <span>เริ่มสแกนเช็คอิน</span>
               </button>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowMobileTester(true)}
-                  className="py-3 px-6 bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl font-bold text-xs border-2 border-sky-300 shadow-[2px_2px_0px_0px_rgba(2,132,199,0.25)] transition-all flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 sm:col-span-2"
-                >
-                  <Smartphone className="w-4 h-4 text-sky-700" />
-                  <span>📱 ทดสอบจำลองหน้าจอมือถือ (Android & iOS Device Simulator & Audit)</span>
-                </button>
-              </div>
             </div>
 
             <div className="pt-4 border-t-2 border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">

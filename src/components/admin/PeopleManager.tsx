@@ -41,37 +41,44 @@ export const PeopleManager: React.FC = () => {
   const loadStudents = async () => {
     const rawStudents = await db.students.toArray();
     const allLogs = await db.checkInLogs.toArray();
+    const allActivities = await db.activities.toArray();
+    const allReflections = await db.reflections.toArray();
+    const activityHours = new Map(allActivities.map(activity => [activity.id, Number(activity.hours || 0)]));
+    const approvedReflections = new Set(allReflections.filter(ref => ref.status === 'approved').map(ref => ref.logId));
 
     // High-performance O(N) map pre-aggregation
-    const logStatsMap = new Map<string, { approved: number; total: number }>();
+    const logStatsMap = new Map<string, { approved: number; hours: number; total: number }>();
     for (let i = 0; i < allLogs.length; i++) {
       const l = allLogs[i];
       if (!l.studentId) continue;
       let stat = logStatsMap.get(l.studentId);
       if (!stat) {
-        stat = { approved: 0, total: 0 };
+        stat = { approved: 0, hours: 0, total: 0 };
         logStatsMap.set(l.studentId, stat);
       }
       stat.total++;
-      if (l.execStatus === 'approved') {
+      if (l.execStatus === 'approved' && approvedReflections.has(l.id)) {
         stat.approved++;
+        stat.hours += activityHours.get(l.activityId) || 0;
       }
     }
 
     const enriched = rawStudents.map((s) => {
-      const stat = logStatsMap.get(s.id) || { approved: 0, total: 0 };
+      const stat = logStatsMap.get(s.id) || { approved: 0, hours: 0, total: 0 };
       const approvedActivities = stat.approved;
+      const approvedHours = stat.hours;
       const totalActivities = stat.total;
-      const isGraduationReady = approvedActivities >= 18;
+      const isGraduationReady = approvedHours >= 100;
 
       return {
         ...s,
         approvedActivities,
+        approvedHours,
         totalActivities,
         isGraduationReady,
-        major: s.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-        faculty: s.faculty || 'คณะครุศาสตร์',
-        year: s.year || 4
+        major: s.major || 'ไม่ระบุสาขาวิชา',
+        faculty: s.faculty || 'ไม่ระบุคณะ',
+        year: s.year || 'ไม่ระบุ'
       };
     });
 
@@ -97,7 +104,7 @@ export const PeopleManager: React.FC = () => {
             ทะเบียนนักศึกษาและผู้เข้าร่วม (Student & People Directory)
           </h2>
           <p className="text-xs text-stone-500 font-medium mt-0.5">
-            ตรวจสอบข้อมูลรายบุคคล กิจกรรมสะสม และความพร้อมสู่การสำเร็จการศึกษา (เกณฑ์ 18 กิจกรรม)
+            ตรวจสอบข้อมูลรายบุคคล ชั่วโมงที่อนุมัติ และความพร้อมสู่การสำเร็จการศึกษา (เกณฑ์ 100 ชั่วโมง)
           </p>
         </div>
 
@@ -106,7 +113,7 @@ export const PeopleManager: React.FC = () => {
             นักศึกษาทั้งหมด: <span className="font-black text-[#18181B]">{students.length} คน</span>
           </div>
           <div className="px-3 py-1.5 bg-[#FACC15] border-2 border-[#18181B] rounded-xl text-xs font-bold text-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-            ผ่านเกณฑ์ 18 กิจกรรม: <span className="font-black">{students.filter(s => s.isGraduationReady).length} คน</span>
+            ผ่านเกณฑ์ 100 ชั่วโมง: <span className="font-black">{students.filter(s => s.isGraduationReady).length} คน</span>
           </div>
         </div>
       </div>
@@ -171,7 +178,7 @@ export const PeopleManager: React.FC = () => {
                 <th className="py-2.5 px-4">ชื่อ - นามสกุล</th>
                 <th className="py-2.5 px-4">สาขาวิชา / ชั้นปี</th>
                 <th className="py-2.5 px-4 text-center">กิจกรรมที่เข้าร่วม</th>
-                <th className="py-2.5 px-4 text-center">กิจกรรมที่อนุมัติ</th>
+                <th className="py-2.5 px-4 text-center">ชั่วโมงที่อนุมัติ</th>
                 <th className="py-2.5 px-4">ความพร้อมสำเร็จการศึกษา</th>
                 <th className="py-2.5 px-4 text-right">รายละเอียด</th>
               </tr>
@@ -193,8 +200,8 @@ export const PeopleManager: React.FC = () => {
                     {s.totalActivities} กิจกรรม
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className="font-black text-[#18181B] text-sm">{s.approvedActivities}</span>
-                    <span className="text-stone-500 text-[10px] font-bold"> / 18 กิจกรรม</span>
+                    <span className="font-black text-[#18181B] text-sm">{s.approvedHours}</span>
+                    <span className="text-stone-500 text-[10px] font-bold"> / 100 ชั่วโมง</span>
                   </td>
                   <td className="py-3 px-4">
                     {s.isGraduationReady ? (
@@ -206,7 +213,7 @@ export const PeopleManager: React.FC = () => {
                       <div className="w-28 bg-stone-100 rounded-full h-2.5 overflow-hidden border border-[#18181B]">
                         <div 
                           className="bg-[#FACC15] h-full rounded-full"
-                          style={{ width: `${Math.min(100, (s.approvedActivities / 18) * 100)}%` }}
+                          style={{ width: `${Math.min(100, (s.approvedHours / 100) * 100)}%` }}
                         />
                       </div>
                     )}
@@ -258,13 +265,13 @@ export const PeopleManager: React.FC = () => {
                   <span className="font-bold text-[#18181B]">{selectedStudent.major}</span>
                 </div>
                 <div>
-                  <span className="text-stone-400 block text-[10px] font-bold">กิจกรรมที่อนุมัติแล้ว:</span>
-                  <span className="font-black text-[#18181B] text-sm">{selectedStudent.approvedActivities} กิจกรรม</span>
+                  <span className="text-stone-400 block text-[10px] font-bold">ชั่วโมงที่อนุมัติแล้ว:</span>
+                  <span className="font-black text-[#18181B] text-sm">{selectedStudent.approvedHours} ชั่วโมง</span>
                 </div>
                 <div>
                   <span className="text-stone-400 block text-[10px] font-bold">สถานะการสำเร็จการศึกษา:</span>
                   <span className={`font-black ${selectedStudent.isGraduationReady ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {selectedStudent.isGraduationReady ? 'ผ่านเกณฑ์ 18 กิจกรรมแล้ว' : `ยังขาดอีก ${18 - selectedStudent.approvedActivities} กิจกรรม`}
+                    {selectedStudent.isGraduationReady ? 'ผ่านเกณฑ์ 100 ชั่วโมงแล้ว' : `ยังขาดอีก ${Math.max(0, 100 - selectedStudent.approvedHours)} ชั่วโมง`}
                   </span>
                 </div>
               </div>
