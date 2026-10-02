@@ -42,9 +42,9 @@ interface StaffPortalProps {
 export const StaffPortal: React.FC<StaffPortalProps> = ({
   onRoleChange,
   onLogout,
-  userName = 'เจ้าหน้าที่สแกนเนอร์ (Staff)',
-  userEmail = 'tpc.edu@npu.ac.th',
-  isUserAdmin = true
+  userName = 'เจ้าหน้าที่',
+  userEmail = '',
+  isUserAdmin = false
 }) => {
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'scanner' | 'reviews' | 'history' | 'activities' | 'reports' | 'database'
@@ -364,15 +364,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
 
         {/* Main Content Viewport */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {activeMenu === 'scanner' && (
-            <StaffScanner 
-              onNavigateToStudent={(targetStudentId) => {
-                if (onRoleChange) {
-                  onRoleChange('student', targetStudentId);
-                }
-              }} 
-            />
-          )}
+          {activeMenu === 'scanner' && <StaffScanner />}
           {activeMenu === 'reviews' && (
             <StaffReviewTab 
               staffName={userName}

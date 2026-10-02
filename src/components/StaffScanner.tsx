@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, cleanCorruptedThaiRecords, clearAllAndKeepRealActivitiesOnly } from '../db/db';
+import { db, cleanCorruptedThaiRecords } from '../db/db';
 import { Activity, CheckInLog } from '../types';
 import { 
   Camera, 
@@ -26,17 +26,13 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   Sparkles,
-  Trash2,
   Power
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from 'html5-qrcode';
 import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase } from '../services/supabaseApi';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
-import { isSupabaseConfigured } from '../lib/supabase';
-import { BarcodeSimulatorModal } from './BarcodeSimulatorModal';
-import { ConfirmModal } from './ConfirmModal';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { MobileDeviceTesterModal } from './MobileDeviceTesterModal';
-import { EmergencyManualEntryModal } from './staff/EmergencyManualEntryModal';
 import { StandeeModal } from './StandeeModal';
 
 interface StaffScannerProps {
@@ -56,13 +52,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const [selectedActivityId, setSelectedActivityId] = useState<string>('');
   const [cohortFilter, setCohortFilter] = useState<string>('all');
   
-  // Barcode Simulator & Clear All State
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
-  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
-  const [isClearingData, setIsClearingData] = useState(false);
-  const [clearSuccessToast, setClearSuccessToast] = useState<string | null>(null);
+  // Scanner tools
   const [showMobileTester, setShowMobileTester] = useState(false);
-  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showStandeeModal, setShowStandeeModal] = useState(false);
   
   // Multi-Device & Station Configuration
@@ -232,105 +223,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     setIsEditingStation(false);
   };
 
-  const handleSimulateRandomScan = async () => {
-    try {
-      const allStudents = await db.students.toArray();
-      const existingLogs = await db.checkInLogs.where('activityId').equals(selectedActivityId).toArray();
-      const checkedIds = new Set(existingLogs.map(l => l.studentId));
-
-      // Find an unscanned student (excluding admin accounts)
-      const unscanned = allStudents.find(s => !checkedIds.has(s.id) && !s.id.startsWith('ADM'));
-      if (unscanned) {
-        await processScan(unscanned.id, 'usb');
-      } else if (allStudents.length > 0) {
-        // If all scanned, pick one to test duplicate detection
-        const candidate = allStudents.find(s => !s.id.startsWith('ADM')) || allStudents[0];
-        await processScan(candidate.id, 'usb');
-      }
-    } catch (e) {
-      console.error('Simulate random scan error:', e);
-    }
-  };
-
-  const handleSimulateDuplicateScan = async () => {
-    try {
-      if (sessionLogs.length > 0) {
-        await processScan(sessionLogs[0].studentId, 'usb');
-      } else {
-        await processScan('66309010001', 'usb');
-      }
-    } catch (e) {
-      console.error('Simulate duplicate scan error:', e);
-    }
-  };
-
-  const handleQuickApproveActivity = async (studentId: string) => {
-    try {
-      const deterministicId = `chk_${selectedActivityId}_${studentId}`;
-      let log = await db.checkInLogs.get(deterministicId);
-      if (!log) {
-        log = await db.checkInLogs
-          .where('studentId')
-          .equals(studentId)
-          .and(l => l.activityId === selectedActivityId)
-          .first();
-      }
-
-      if (!log) {
-        await processScan(studentId, 'usb');
-        log = await db.checkInLogs.get(deterministicId);
-      }
-
-      if (log) {
-        // 1. Update check-in log to approved
-        await db.checkInLogs.update(log.id, {
-          staffStatus: 'verified',
-          execStatus: 'approved',
-          approvedBy: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด (ผู้ช่วยคณบดี)'
-        });
-
-        // 2. Upsert reflection as approved
-        const refId = `ref_${log.id}`;
-        await db.reflections.put({
-          id: refId,
-          logId: log.id,
-          studentId: log.studentId,
-          activityId: log.activityId,
-          knowledge: 'ได้เรียนรู้ทักษะและองค์ความรู้ตามมาตรฐานวิชาชีพครูและการจัดกิจกรรมการเรียนรู้',
-          practice: 'ฝึกปฏิบัติจริงและร่วมกิจกรรมอย่างเต็มความสามารถ',
-          attitude: 'มีความตระหนักและเจตคติที่ดีต่อวิชาชีพและชุมชน',
-          status: 'approved',
-          submittedAt: new Date().toISOString(),
-          staffReviewedAt: new Date().toISOString(),
-          staffReviewerName: 'อาจารย์ผู้รับผิดชอบกิจกรรม',
-          execApprovedAt: new Date().toISOString(),
-          execApproverName: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด (ผู้ช่วยคณบดี)'
-        });
-
-        triggerAudioAndHaptic('success');
-        triggerScreenFlash('success');
-
-        const currentAct = activities.find(a => a.id === selectedActivityId);
-        const student = await db.students.get(studentId);
-        setScanResult({
-          status: 'success',
-          message: `อนุมัติกิจกรรมสมบูรณ์แล้ว! (นับสะสม 1 กิจกรรมสู่เกณฑ์ 18 กิจกรรม)`,
-          student,
-          activityName: currentAct?.name,
-          time: new Date().toLocaleTimeString('th-TH')
-        });
-
-        if (selectedActivityId) {
-          await loadSessionLogs(selectedActivityId);
-        }
-
-        window.dispatchEvent(new Event('db_updated'));
-      }
-    } catch (e) {
-      console.error('Error quick approving activity:', e);
-    }
-  };
-
   // Staff Open/Close Activity Toggle Handler
   const handleToggleActivityStatus = async (activityIdToToggle?: string) => {
     const actId = activityIdToToggle || selectedActivityId;
@@ -345,28 +237,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     window.dispatchEvent(new CustomEvent('db_updated', {
       detail: { activityId: actId, status: newStatus }
     }));
-  };
-
-  // Clear all data and reset to real projects only
-  const handleClearAllData = async () => {
-    setIsClearingData(true);
-    try {
-      await clearAllAndKeepRealActivitiesOnly();
-      const updatedActs = await db.activities.toArray();
-      setActivities(updatedActs);
-      if (updatedActs.length > 0) {
-        setSelectedActivityId(updatedActs[0].id);
-      }
-      setSessionLogs([]);
-      setTotalActivityCount(0);
-      setClearSuccessToast('เคลียร์ข้อมูลทุกอย่างเรียบร้อยแล้ว คงเหลือเฉพาะ 18 โครงการจริงของคณะครุศาสตร์');
-      setTimeout(() => setClearSuccessToast(null), 4000);
-    } catch (e) {
-      console.error('Clear error:', e);
-    } finally {
-      setIsClearingData(false);
-      setShowClearConfirmModal(false);
-    }
   };
 
   // Web Audio API synthesizers for crisp, non-blocking feedback
@@ -754,18 +624,33 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         throw new Error('รหัสที่สแกนไม่ถูกต้องหรือไม่สมบูรณ์ กรุณาสแกนใหม่อีกครั้ง');
       }
 
-      // 2. Get or register student in local DB
+      // 2. Resolve the student from the verified roster. A scanned number alone
+      // is never enough to create a student identity.
       let student = await db.students.get(studentId);
       if (!student) {
-        student = {
-          id: studentId,
-          name: `นักศึกษา (${studentId})`,
-          email: `${studentId}@npu.ac.th`,
-          faculty: 'คณะครุศาสตร์ ม.นครพนม',
-          major: 'ไม่ระบุสาขาวิชา',
-          year: 1
-        };
-        await db.students.put(student);
+        const client = getSupabaseClient();
+        if (client) {
+          const { data: rosterStudent, error: lookupError } = await client
+            .from('students')
+            .select('id, name, email, faculty, major, year')
+            .eq('id', studentId)
+            .maybeSingle();
+          if (lookupError) throw new Error('ตรวจสอบทะเบียนนักศึกษาไม่ได้ กรุณาลองอีกครั้งหรือติดต่อเจ้าหน้าที่');
+          if (rosterStudent) {
+            student = {
+              id: rosterStudent.id,
+              name: rosterStudent.name,
+              email: rosterStudent.email || '',
+              faculty: rosterStudent.faculty || undefined,
+              major: rosterStudent.major || undefined,
+              year: rosterStudent.year || undefined
+            };
+            await db.students.put(student);
+          }
+        }
+        if (!student) {
+          throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาให้เจ้าหน้าที่ตรวจสอบข้อมูลก่อนเช็คอิน');
+        }
       }
 
       // 3. Strict Single Check-in Rule (รับข้อมูลแค่ 1 ครั้งต่อกิจกรรม ตรวจสอบทั้งในเครื่องและที่ซิงก์มาจากเครื่องอื่น)
@@ -1204,13 +1089,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <span>ระบบป้องกันข้อมูลซ้ำซ้อน (Single Check-in): ยิงซ้ำจะแจ้งเตือนทันทีด้วยเสียงบัซและหน้าจอสีส้ม</span>
             </div>
 
-            {clearSuccessToast && (
-              <div className="p-3.5 bg-emerald-50 border-2 border-emerald-500 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{clearSuccessToast}</span>
-              </div>
-            )}
-
             {/* Main Action Buttons */}
             <div className="space-y-2.5">
               <button 
@@ -1223,25 +1101,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               </button>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsSimulatorOpen(true)}
-                  className="py-3 px-6 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl font-bold text-xs border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] transition-all flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
-                >
-                  <Zap className="w-4 h-4 text-white" />
-                  <span>🎯 จำลองการเทสสแกนบาร์โค้ด & อัปเดตกิจกรรม</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowClearConfirmModal(true)}
-                  disabled={isClearingData}
-                  className="py-3 px-6 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-xl font-bold text-xs border-2 border-rose-300 shadow-[2px_2px_0px_0px_rgba(225,29,72,0.25)] transition-all flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-700" />
-                  <span>🧹 เคลียร์ข้อมูลทุกอย่าง เหลือแค่โครงการจริง</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setShowMobileTester(true)}
@@ -1377,21 +1236,12 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
           </button>
 
           <button
-            onClick={() => setShowEmergencyModal(true)}
+            onClick={() => { setMode('usb'); setTimeout(() => inputRef.current?.focus(), 0); }}
             className="px-3 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-black transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 min-h-[44px]"
-            title="บันทึกข้อมูลฉุกเฉินกรณีแบตหมด / ไม่มีโทรศัพท์"
+            title="กรอกรหัสนักศึกษาจากรายชื่อที่ลงทะเบียนแล้ว"
           >
             <AlertCircle className="w-4 h-4 text-amber-950" />
-            <span>ฉุกเฉิน (Manual Entry)</span>
-          </button>
-
-          <button
-            onClick={() => setIsSimulatorOpen(true)}
-            className="px-3 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl text-xs font-bold transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 min-h-[44px]"
-            title="จำลองการเทสสแกนบาร์โค้ด & อัปเดตกิจกรรม"
-          >
-            <Zap className="w-4 h-4 text-white" />
-            <span>จำลองยิงบาร์โค้ด</span>
+            <span>กรอกรหัสด้วยตนเอง</span>
           </button>
 
           <button
@@ -1525,16 +1375,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                       <span>🎓 ดูหน้ากิจกรรมของ {scanResult.student.name.split(' ')[0]} ↗</span>
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleQuickApproveActivity(scanResult.student.id);
-                    }}
-                    className="px-3 py-1 bg-white text-stone-900 hover:bg-stone-100 rounded-lg text-xs font-bold border border-stone-300 shadow-xs flex items-center gap-1 active:scale-95"
-                  >
-                    <span>✨ อนุมัติกิจกรรมทันที</span>
-                  </button>
                 </div>
               )}
             </div>
@@ -1639,7 +1479,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                     type="text"
                     value={manualInput}
                     onChange={(e) => setManualInput(e.target.value)}
-                    placeholder="หรือพิมพ์รหัสนักศึกษา เช่น 66309010001"
+                    placeholder="หรือพิมพ์รหัสนักศึกษา 12 หลัก"
                     className="flex-1 px-3 py-2 bg-stone-50 border-2 border-[#18181B] rounded-xl text-xs sm:text-sm font-bold text-[#18181B] outline-none"
                   />
                   <button
@@ -1650,77 +1490,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   </button>
                 </form>
 
-                {/* Comprehensive Simulation & Activity Update Panel */}
-                <div className="pt-3 border-t-2 border-stone-200 space-y-2.5 text-left bg-stone-50 p-3 rounded-xl border border-stone-300">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-[#18181B] flex items-center gap-1">
-                      <span>🧪</span> จำลองการเทสสแกนบาร์โค้ด & อัปเดตกิจกรรม:
-                    </span>
-                    <span className="text-[10px] text-stone-500 font-bold">คลิกเพื่อทดสอบ</span>
-                  </div>
-
-                  {/* Preset Student Buttons */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { id: '66309010001', name: 'กิตติศักดิ์ (ปี 4)' },
-                      { id: '66309010002', name: 'ศิริสุดา (ปี 4)' },
-                      { id: '67010110001', name: 'จิรภัทร (ปี 3)' },
-                      { id: '68010110001', name: 'พงศกร (ปี 2)' },
-                      { id: '69010110001', name: 'วรเมธ (ปี 1)' },
-                    ].map(st => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        onClick={() => processScan(st.id, 'usb')}
-                        className="px-2.5 py-1 bg-white hover:bg-[#FACC15] text-[#18181B] rounded-lg text-[10px] font-bold border border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-1 active:scale-95"
-                      >
-                        <span>💳</span>
-                        <span>{st.name}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Simulation Action Triggers */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-stone-200">
-                    <button
-                      type="button"
-                      onClick={handleSimulateRandomScan}
-                      className="px-2.5 py-1 bg-[#18181B] hover:bg-stone-800 text-[#FACC15] rounded-lg text-[10px] font-bold shadow-xs transition-all flex items-center gap-1 active:scale-95"
-                    >
-                      <span>🎲 สุ่มยิงคนใหม่</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSimulateDuplicateScan}
-                      className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-bold shadow-xs transition-all flex items-center gap-1 active:scale-95"
-                    >
-                      <span>⚠️ ทดสอบยิงซ้ำ</span>
-                    </button>
-
-                    {sessionLogs.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickApproveActivity(sessionLogs[0].studentId)}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all flex items-center gap-1 active:scale-95"
-                        title="อนุมัติกิจกรรมของนักศึกษาคนล่าสุดเพื่อให้นับสะสมเป็น 1 กิจกรรมสู่เกณฑ์ 18 กิจกรรม"
-                      >
-                        <Sparkles className="w-3 h-3 text-[#FACC15]" />
-                        <span>อนุมัติกิจกรรม {sessionLogs[0].studentName.split(' ')[0]}</span>
-                      </button>
-                    )}
-
-                    {sessionLogs.length > 0 && onNavigateToStudent && (
-                      <button
-                        type="button"
-                        onClick={() => onNavigateToStudent(sessionLogs[0].studentId)}
-                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all flex items-center gap-1 active:scale-95"
-                      >
-                        <span>🎓 ดูหน้ากิจกรรม ↗</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="w-full max-w-md space-y-3">
@@ -2020,42 +1789,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
       </div>
 
-      {/* Emergency Manual Entry Modal */}
-      <EmergencyManualEntryModal
-        isOpen={showEmergencyModal}
-        onClose={() => {
-          setShowEmergencyModal(false);
-          if (mode === 'usb') setTimeout(() => inputRef.current?.focus(), 100);
-        }}
-        activeActivity={selectedActivityObj || null}
-        scannerStation={scannerStation}
-        onSuccess={(student, isDuplicate) => {
-          if (isDuplicate) {
-            triggerAudioAndHaptic('warning');
-            triggerScreenFlash('warning');
-            setScanResult({
-              status: 'warning',
-              message: `รหัส ${student.id} เคยเช็คชื่อกิจกรรมนี้ไปแล้ว!`,
-              student,
-              time: new Date().toLocaleTimeString('th-TH')
-            });
-          } else {
-            triggerAudioAndHaptic('success');
-            triggerScreenFlash('success');
-            setScanResult({
-              status: 'success',
-              message: `เช็คชื่อฉุกเฉินสำเร็จ: ${student.name} (ตีธงบัญชีชั่วคราว)`,
-              student,
-              activityName: selectedActivityObj?.name,
-              time: new Date().toLocaleTimeString('th-TH'),
-              cardSource: 'manual'
-            });
-          }
-          if (selectedActivityId) loadSessionLogs(selectedActivityId);
-          if (mode === 'usb') setTimeout(() => inputRef.current?.focus(), 150);
-        }}
-      />
-
       {/* Standee Modal for Walk-in Guidance */}
       <StandeeModal
         isOpen={showStandeeModal}
@@ -2063,26 +1796,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       />
 
       {/* Barcode Simulator Modal */}
-      <BarcodeSimulatorModal
-        isOpen={isSimulatorOpen}
-        onClose={() => setIsSimulatorOpen(false)}
-        onNavigateToStudent={onNavigateToStudent}
-        initialActivityId={selectedActivityId}
-        stationName={scannerStation}
-      />
-
-      {/* Confirm Clear All Data Modal */}
-      <ConfirmModal
-        isOpen={showClearConfirmModal}
-        onClose={() => setShowClearConfirmModal(false)}
-        onConfirm={handleClearAllData}
-        title="ยืนยันการเคลียร์ข้อมูลทุกอย่าง เหลือแค่โครงการจริง?"
-        message="ระบบจะทำการล้างประวัติการเช็คอินทั้งหมด ล้างการถอดบทเรียน และคืนค่ารายการกิจกรรมให้คงเหลือเฉพาะ 18 โครงการจริงของคณะครุศาสตร์ ม.นครพนม เท่านั้น"
-        confirmText="ยืนยันเคลียร์ข้อมูล"
-        cancelText="ยกเลิก"
-        type="danger"
-      />
-
       {/* Mobile Device Tester Modal */}
       <MobileDeviceTesterModal
         isOpen={showMobileTester}

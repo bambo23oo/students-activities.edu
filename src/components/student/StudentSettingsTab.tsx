@@ -24,7 +24,6 @@ import {
   EyeOff
 } from 'lucide-react';
 import { Student } from '../../types';
-import { db } from '../../db/db';
 import { compressAndConvertToBase64 } from '../../utils/imageUtils';
 
 interface StudentSettingsTabProps {
@@ -53,65 +52,6 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Password Change State
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
-  const [passwordFeedback, setPasswordFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordFeedback(null);
-
-    const actualStudentId = student?.id || studentId;
-    const defaultPw = actualStudentId.trim();
-    const actualCurrentPw = (student?.password || defaultPw).trim();
-
-    if (!currentPassword.trim()) {
-      setPasswordFeedback({ type: 'error', text: 'กรุณากรอกรหัสผ่านปัจจุบัน' });
-      return;
-    }
-
-    if (currentPassword.trim() !== actualCurrentPw) {
-      setPasswordFeedback({ type: 'error', text: 'รหัสผ่านปัจจุบันไม่ถูกต้อง (หากยังไม่เคยเปลี่ยน รหัสผ่านคือรหัสนักศึกษา)' });
-      return;
-    }
-
-    if (!newPassword.trim() || newPassword.length < 4) {
-      setPasswordFeedback({ type: 'error', text: 'รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 4 ตัวอักษร' });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordFeedback({ type: 'error', text: 'รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน' });
-      return;
-    }
-
-    setIsSavingPassword(true);
-    try {
-      await db.students.update(actualStudentId, {
-        password: newPassword.trim(),
-        isPasswordChanged: true,
-        passwordUpdatedAt: new Date().toISOString()
-      });
-
-      localStorage.removeItem('student_needs_password_change');
-      setPasswordFeedback({ type: 'success', text: 'เปลี่ยนรหัสผ่านสำเร็จเรียบร้อยแล้ว! ใช้งานรหัสผ่านใหม่ในการเข้าสู่ระบบครั้งถัดไป' });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      window.dispatchEvent(new CustomEvent('db_updated', { detail: { studentId: actualStudentId } }));
-      setTimeout(() => setPasswordFeedback(null), 5000);
-    } catch (err: any) {
-      setPasswordFeedback({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึกรหัสผ่าน: ' + (err.message || '') });
-    } finally {
-      setIsSavingPassword(false);
-    }
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -308,125 +248,7 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
         {/* Right Column: Password Management & Administration */}
         <div className="space-y-6">
 
-          {/* Password & Security Card */}
-          <div className="bg-[#F7F4EB] border-2 border-[#18181B] p-4 sm:p-5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] space-y-4">
-            <div className="flex items-center justify-between border-b-2 border-[#18181B] pb-2">
-              <h3 className="text-sm font-black uppercase tracking-wider text-stone-900 flex items-center gap-1.5">
-                <Lock className="w-4 h-4 text-[#EA580C]" />
-                <span>ความปลอดภัยและการเปลี่ยนรหัสผ่าน (PASSWORD)</span>
-              </h3>
-            </div>
-
-            {/* Current Password Status */}
-            <div className="p-3 bg-white border-2 border-stone-300 space-y-1">
-              <span className="text-[10px] uppercase font-black tracking-wider text-stone-500 block">
-                สถานะรหัสผ่านปัจจุบัน:
-              </span>
-              <div className="flex items-center gap-2">
-                {student?.isPasswordChanged ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 border border-emerald-400 text-emerald-900 rounded-md text-xs font-black">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>รหัสผ่านส่วนตัว (ตั้งค่าแล้ว)</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 border border-amber-400 text-amber-900 rounded-md text-xs font-black">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>กำลังใช้รหัสผ่านเริ่มต้น (รหัสนักศึกษา)</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-stone-500 mt-1">
-                * รหัสผ่านเริ่มต้นคือรหัสนักศึกษา ({student?.id || studentId}) แนะนำให้ตั้งรหัสผ่านใหม่เพื่อความปลอดภัยของข้อมูลกิจกรรม
-              </p>
-            </div>
-
-            {/* Change Password Form */}
-            <form onSubmit={handleChangePassword} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  รหัสผ่านปัจจุบัน
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPw ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="กรอกรหัสผ่านเดิม (เริ่มต้นคือรหัสนักศึกษา)"
-                    className="w-full pl-3 pr-9 py-2 bg-white border-2 border-stone-300 text-xs font-mono font-medium outline-none focus:border-[#EA580C] transition-colors"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPw(!showCurrentPw)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-                  >
-                    {showCurrentPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  รหัสผ่านใหม่ (อย่างน้อย 4 ตัวอักษร)
-                </label>
-                <div className="relative">
-                  <input
-                    type={showNewPw ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="ตั้งรหัสผ่านใหม่ที่ต้องการ"
-                    className="w-full pl-3 pr-9 py-2 bg-white border-2 border-stone-300 text-xs font-mono font-medium outline-none focus:border-[#EA580C] transition-colors"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPw(!showNewPw)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-                  >
-                    {showNewPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  ยืนยันรหัสผ่านใหม่
-                </label>
-                <input
-                  type={showNewPw ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง"
-                  className="w-full px-3 py-2 bg-white border-2 border-stone-300 text-xs font-mono font-medium outline-none focus:border-[#EA580C] transition-colors"
-                  required
-                />
-              </div>
-
-              {passwordFeedback && (
-                <div className={`p-2.5 border-2 text-xs font-bold flex items-start gap-2 ${
-                  passwordFeedback.type === 'success'
-                    ? 'bg-emerald-100 border-emerald-600 text-emerald-950'
-                    : 'bg-rose-100 border-rose-600 text-rose-950'
-                }`}>
-                  {passwordFeedback.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  )}
-                  <span>{passwordFeedback.text}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSavingPassword}
-                className="w-full py-2.5 px-4 bg-[#EA580C] hover:bg-[#C2410C] text-white font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <Key className="w-4 h-4" />
-                <span>{isSavingPassword ? 'กำลังบันทึกรหัสผ่าน...' : 'บันทึกรหัสผ่านใหม่'}</span>
-              </button>
-            </form>
-          </div>
+          <div className="bg-[#F7F4EB] border-2 border-[#18181B] p-4 sm:p-5 text-sm text-stone-700">บัญชีนี้เข้าสู่ระบบผ่าน Google มหาวิทยาลัย การจัดการรหัสผ่านทำที่บัญชีมหาวิทยาลัย</div>
 
           {/* Role Switching for Authorized Users */}
           {onRoleChange && isUserAdmin && (

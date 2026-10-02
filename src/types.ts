@@ -1,122 +1,6 @@
 // Base Types for Authentication and Roles
 export type UserRole = 'student' | 'staff' | 'approver' | 'none';
 
-export interface OfficialAccount {
-  username: string;
-  password: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  faculty: string;
-  stationOrRole: string;
-  permissions: {
-    canScan: boolean;
-    canExport: boolean;
-    canApprove: boolean;
-    isSuperAdmin: boolean;
-  };
-}
-
-export const OFFICIAL_SYSTEM_ACCOUNTS: OfficialAccount[] = [
-  {
-    username: 'admin',
-    password: 'tpc@2026',
-    email: 'admin@npu.ac.th',
-    name: 'ผู้ดูแลระบบและผู้บริหาร (Admin คณะครุศาสตร์)',
-    role: 'approver',
-    faculty: 'คณะครุศาสตร์',
-    stationOrRole: 'Super Admin & Executive Approver',
-    permissions: { canScan: true, canExport: true, canApprove: true, isSuperAdmin: true }
-  },
-  {
-    username: 'staffedu',
-    password: 'tpc@2026',
-    email: 'staffedu@npu.ac.th',
-    name: 'เจ้าหน้าที่กิจกรรม คณะครุศาสตร์ (Staff)',
-    role: 'staff',
-    faculty: 'คณะครุศาสตร์',
-    stationOrRole: 'เจ้าหน้าที่ประจำจุดสแกนเนอร์และกิจกรรม',
-    permissions: { canScan: true, canExport: true, canApprove: false, isSuperAdmin: false }
-  }
-];
-
-export const findOfficialAccount = (usernameOrEmail: string, password?: string): OfficialAccount | undefined => {
-  if (!usernameOrEmail) return undefined;
-  const input = usernameOrEmail.trim().toLowerCase();
-  return OFFICIAL_SYSTEM_ACCOUNTS.find(acc => {
-    const matchUser = acc.username.toLowerCase() === input || acc.email.toLowerCase() === input;
-    if (!matchUser) return false;
-    if (password !== undefined) {
-      return acc.password === password;
-    }
-    return true;
-  });
-};
-
-export interface AdminAccountConfig {
-  email: string;
-  name: string;
-  studentId: string;
-  prefix: string;
-  firstName: string;
-  lastName: string;
-  major: string;
-  faculty: string;
-  university: string;
-  roleTitle: string;
-}
-
-export const ADMIN_ACCOUNTS: AdminAccountConfig[] = [
-  {
-    email: 'admin@npu.ac.th',
-    name: 'ผู้ดูแลระบบและผู้บริหาร (Admin คณะครุศาสตร์)',
-    studentId: 'ADM-6601000',
-    prefix: 'ผศ.ดร.',
-    firstName: 'ผู้ดูแลระบบ',
-    lastName: 'คณะครุศาสตร์',
-    major: 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-    faculty: 'คณะครุศาสตร์',
-    university: 'มหาวิทยาลัยนครพนม',
-    roleTitle: 'Super Admin & ผู้บริหาร'
-  },
-  {
-    email: 'srisuda.edu@npu.ac.th',
-    name: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด (ผู้บริหาร คณะครุศาสตร์)',
-    studentId: 'ADM-6601001',
-    prefix: 'ผศ.ดร.',
-    firstName: 'ศรีสุดา',
-    lastName: 'ด้วงโต้ด',
-    major: 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-    faculty: 'คณะครุศาสตร์',
-    university: 'มหาวิทยาลัยนครพนม',
-    roleTitle: 'Super Admin & ผู้บริหาร'
-  },
-  {
-    email: 'sci.edu@npu.ac.th',
-    name: 'ผู้ดูแลระบบกิจกรรม คณะวิทยาศาสตร์',
-    studentId: 'ADM-6601002',
-    prefix: 'อาจารย์',
-    firstName: 'ผู้ดูแลระบบ',
-    lastName: 'คณะวิทยาศาสตร์',
-    major: 'สาขาวิชาฟิสิกส์ (ค.บ.)',
-    faculty: 'คณะวิทยาศาสตร์',
-    university: 'มหาวิทยาลัยนครพนม',
-    roleTitle: 'ผู้ดูแลระบบกิจกรรม (คณะวิทยาศาสตร์)'
-  }
-];
-
-export const isAdminEmail = (email?: string | null): boolean => {
-  if (!email) return false;
-  const clean = email.trim().toLowerCase();
-  return ADMIN_ACCOUNTS.some(a => a.email.toLowerCase() === clean) || clean.includes('admin') || clean.includes('srisuda');
-};
-
-export const getAdminAccount = (email?: string | null): AdminAccountConfig | undefined => {
-  if (!email) return undefined;
-  const clean = email.trim().toLowerCase();
-  return ADMIN_ACCOUNTS.find(a => a.email.toLowerCase() === clean);
-};
-
 export interface AuthState {
   isAuthenticated: boolean;
   accessToken: string | null;
@@ -183,15 +67,6 @@ export interface Student {
   passwordUpdatedAt?: string;
 }
 
-export const getStudentDefaultPassword = (studentId: string): string => {
-  return (studentId || '').trim();
-};
-
-export const verifyStudentPassword = (student: Student, passwordAttempt: string): boolean => {
-  const defaultPw = getStudentDefaultPassword(student.id);
-  const actualPw = (student.password || defaultPw).trim();
-  return actualPw === (passwordAttempt || '').trim();
-};
 
 export interface CheckInLog {
   id: string;
@@ -264,5 +139,3 @@ export interface Reflection {
   execApprovedAt?: string;
   execApproverName?: string;
 }
-
-

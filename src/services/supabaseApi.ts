@@ -32,24 +32,24 @@ export const pullFromSupabase = async () => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('ยังไม่ได้เชื่อมต่อกับ Supabase (กรุณากรอก URL และ API Key)');
 
-  const { data: students, error: sErr } = await supabase.from('students').select('*');
-  if (sErr) throw new Error(`ตาราง students: ${formatSupabaseError(sErr)}`);
+  const readAll = async (table: 'students' | 'activities' | 'check_in_logs' | 'reflections') => {
+    const rows: any[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase.from(table).select('*').range(offset, offset + pageSize - 1);
+      if (error) throw new Error(`ตาราง ${table}: ${formatSupabaseError(error)}`);
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  };
 
-  const { data: activities, error: aErr } = await supabase.from('activities').select('*');
-  if (aErr) throw new Error(`ตาราง activities: ${formatSupabaseError(aErr)}`);
+  const [students, activities, logs, reflections] = await Promise.all([
+    readAll('students'), readAll('activities'), readAll('check_in_logs'), readAll('reflections')
+  ]);
 
-  const { data: logs, error: lErr } = await supabase.from('check_in_logs').select('*');
-  if (lErr) throw new Error(`ตาราง check_in_logs: ${formatSupabaseError(lErr)}`);
-
-  const { data: reflections } = await supabase.from('reflections').select('*');
-
-  // Clear local and replace safely in a single transaction
+  // A partial or empty cloud response must never erase browser records.
   await db.transaction('rw', db.students, db.activities, db.checkInLogs, db.reflections, async () => {
-    await db.students.clear();
-    await db.activities.clear();
-    await db.checkInLogs.clear();
-    await db.reflections.clear();
-
     if (students && students.length > 0) {
       await db.students.bulkPut(students.map(s => ({
         id: s.id,
@@ -104,6 +104,7 @@ export const pullFromSupabase = async () => {
       })));
     }
   });
+  window.dispatchEvent(new Event('db_updated'));
 };
 
 export const logCheckInToSupabase = async (log: CheckInLog, student: Student): Promise<boolean> => {
@@ -131,20 +132,10 @@ export const logCheckInToSupabase = async (log: CheckInLog, student: Student): P
       }
     }
 
-    // 1. Upsert student
-    const { error: studentError } = await supabase
-      .from('students')
-      .upsert({
-        id: student.id,
-        name: student.name,
-        email: student.email || null,
-        faculty: student.faculty || 'คณะครุศาสตร์',
-        major: student.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-        year: student.year || 1
-      }, { onConflict: 'id' });
-
-    if (studentError) {
-      console.warn('Supabase: Warning upserting student:', formatSupabaseError(studentError));
+    // The roster is authoritative. A scan must never create or overwrite it.
+    const { data: registeredStudent, error: studentError } = await supabase
+      .from('students').select('id').eq('id', student.id).maybeSingle();
+    if (studentError || !registeredStudent || student.id !== log.studentId) {
       await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
       return false;
     }
@@ -216,14 +207,11 @@ export const syncPendingLogsToSupabase = async (): Promise<{ synced: number; fai
     let failedCount = 0;
 
     for (const log of pendingLogs) {
-      const student = await db.students.get(log.studentId) || {
-        id: log.studentId,
-        name: `นักศึกษา (${log.studentId})`,
-        email: `${log.studentId}@npu.ac.th`,
-        faculty: 'คณะครุศาสตร์',
-        major: 'ไม่ระบุสาขา',
-        year: 1
-      };
+      const student = await db.students.get(log.studentId);
+      if (!student) {
+        failedCount++;
+        continue;
+      }
 
       try {
         await logCheckInToSupabase(log, student);
@@ -257,83 +245,6 @@ export const getPendingSyncCount = async (): Promise<number> => {
     return await db.checkInLogs.filter(l => l.syncStatus === 'pending').count();
   } catch (e) {
     return 0;
-  }
-};
-
-export const syncAllDataToSupabase = async (data: {
-  students: Student[];
-  activities: Activity[];
-  checkInLogs: CheckInLog[];
-  reflections?: Reflection[];
-}) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) throw new Error('ยังไม่ได้ระบุการเชื่อมต่อ Supabase (กรุณากรอก Project URL และ API Key ในหน้าตั้งค่า)');
-
-  // 1. Students
-  if (data.students.length > 0) {
-    const mappedStudents = data.students.map(s => ({
-      id: s.id,
-      name: s.name,
-      email: s.email || null,
-      faculty: s.faculty || null,
-      major: s.major || null,
-      year: s.year || 1
-    }));
-    const { error: sErr } = await supabase.from('students').upsert(mappedStudents, { onConflict: 'id' });
-    if (sErr) throw new Error(`ตาราง students: ${formatSupabaseError(sErr)}`);
-  }
-
-  // 2. Activities
-  if (data.activities.length > 0) {
-    const mappedActivities = data.activities.map(a => ({
-      id: a.id,
-      name: a.name,
-      date: a.date,
-      end_date: a.endDate || null,
-      location: a.location || null,
-      description: a.description || null,
-      status: a.status || 'active'
-    }));
-    const { error: aErr } = await supabase.from('activities').upsert(mappedActivities, { onConflict: 'id' });
-    if (aErr) throw new Error(`ตาราง activities: ${formatSupabaseError(aErr)}`);
-  }
-
-  // 3. Check-In Logs
-  if (data.checkInLogs.length > 0) {
-    const mappedLogs = data.checkInLogs.map(l => ({
-      id: l.id,
-      student_id: l.studentId,
-      activity_id: l.activityId,
-      timestamp: l.timestamp,
-      method: l.method || 'camera',
-      staff_status: l.staffStatus,
-      exec_status: l.execStatus,
-      student_note: l.studentNote || null,
-      audit_trail: l.auditTrail || null
-    }));
-    const { error: lErr } = await supabase.from('check_in_logs').upsert(mappedLogs, { onConflict: 'id' });
-    if (lErr) throw new Error(`ตาราง check_in_logs: ${formatSupabaseError(lErr)}`);
-  }
-
-  // 4. Reflections
-  if (data.reflections && data.reflections.length > 0) {
-    const mappedReflections = data.reflections.map(r => ({
-      id: r.id,
-      log_id: r.logId || null,
-      student_id: r.studentId || '',
-      activity_id: r.activityId || '',
-      k_knowledge: r.knowledge || null,
-      p_skill: r.practice || null,
-      a_attitude: r.attitude || null,
-      moral: null,
-      feedback: null,
-      status: r.status || 'pending_step1',
-      reject_reason: r.rejectionReason || null,
-      submitted_at: r.submittedAt || new Date().toISOString(),
-      updated_at: r.submittedAt || new Date().toISOString()
-    }));
-    const { error: rErr } = await supabase.from('reflections').upsert(mappedReflections, { onConflict: 'id' });
-    if (rErr) throw new Error(`ตาราง reflections: ${formatSupabaseError(rErr)}`);
   }
 };
 
@@ -408,4 +319,14 @@ export const setupRealtimeSync = (onUpdate?: () => void) => {
     });
     
   console.log('Supabase realtime multi-device scanner sync initialized.');
+};
+
+export const stopRealtimeSync = () => {
+  const supabase = getSupabaseClient();
+  if (supabase && realtimeSubscription) supabase.removeChannel(realtimeSubscription);
+  realtimeSubscription = null;
+  if (autoSyncInterval) clearInterval(autoSyncInterval);
+  autoSyncInterval = null;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = null;
 };

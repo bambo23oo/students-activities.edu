@@ -1,7 +1,7 @@
 import Dexie, { Table } from 'dexie';
 import { Activity, Student, CheckInLog, Reflection, SystemUser, SystemAuditLog } from '../types';
 import { REAL_FACULTY_ACTIVITIES } from '../data/realActivities';
-import { INITIAL_NPU_STUDENTS } from '../data/initialStudents';
+import legacyDemoSignatures from '../data/legacyDemoSignatures.json';
 
 export class AppDatabase extends Dexie {
   activities!: Table<Activity, string>;
@@ -10,6 +10,13 @@ export class AppDatabase extends Dexie {
   reflections!: Table<Reflection, string>;
   systemUsers!: Table<SystemUser, string>;
   auditLogs!: Table<SystemAuditLog, string>;
+  retiredDemoStudents!: Table<{
+    id: string;
+    student: Student;
+    checkInLogs: CheckInLog[];
+    reflections: Reflection[];
+    archivedAt: string;
+  }, string>;
 
   constructor() {
     super('NPUActivityDatabase');
@@ -25,6 +32,9 @@ export class AppDatabase extends Dexie {
     this.version(3).stores({
       systemUsers: 'id, email, role, status',
       auditLogs: 'id, actor, action, timestamp'
+    });
+    this.version(4).stores({
+      retiredDemoStudents: 'id, archivedAt'
     });
   }
 }
@@ -99,188 +109,50 @@ export const purgeSelfCreatedActivities = async (): Promise<{ deletedCount: numb
   }
 };
 
-export const initializeMockData = async () => {
-  const studentsCount = await db.students.count();
-  if (studentsCount === 0) {
-    await db.students.bulkPut(INITIAL_NPU_STUDENTS);
-  }
-
-  // Seed the local demo only on a new device. Existing records belong to the user.
+export const initializeLocalActivities = async () => {
   if (await db.activities.count() === 0) {
     await db.activities.bulkPut(REAL_FACULTY_ACTIVITIES);
   }
 };
 
 /**
- * Re-imports or forces reload of the full official student roster across 4 cohorts and 2 faculties
+ * Retires only unchanged records from the former bundled demo roster. Keep a
+ * recoverable copy in IndexedDB and leave every other student untouched.
  */
-export const importInitialStudentRoster = async (): Promise<number> => {
-  await db.students.bulkPut(INITIAL_NPU_STUDENTS);
-  await ensureAdminData();
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('db_updated', { detail: { action: 'roster_imported' } }));
+export const retireLegacyDemoStudents = async (): Promise<string[]> => {
+  const retiredIds: string[] = [];
+  const unchangedDemoRecords: Student[] = [];
+  for (const sample of legacyDemoSignatures) {
+    const current = await db.students.get(sample.id);
+    if (!current || current.profileImage || current.password || current.isPreRegistered || current.isTemporary) continue;
+    const serialized = [current.id, current.name, current.email, current.major, current.faculty, current.registeredAt].join('|');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
+    const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (sha256 === sample.sha256) unchangedDemoRecords.push(current);
   }
-  return INITIAL_NPU_STUDENTS.length;
-};
-
-/**
- * Clears all check-in logs, reflections, custom activities,
- * and resets database to ONLY the 18 official faculty projects (REAL_FACULTY_ACTIVITIES).
- */
-export const clearAllAndKeepRealActivitiesOnly = async (): Promise<{
-  activitiesCount: number;
-  studentsCount: number;
-  logsCount: number;
-  reflectionsCount: number;
-}> => {
-  try {
-    // 1. Clear check-in logs
-    await db.checkInLogs.clear();
-
-    // 2. Clear reflections
-    await db.reflections.clear();
-
-    // 3. Reset activities strictly to the 18 official faculty projects
-    await db.activities.clear();
-    await db.activities.bulkPut(REAL_FACULTY_ACTIVITIES);
-
-    // 4. Reset students strictly to the official faculty students & admins
-    await db.students.clear();
-    await db.students.bulkPut(INITIAL_NPU_STUDENTS);
-    await ensureAdminData();
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('npu_real_projects_only_cleared', 'true');
-      window.dispatchEvent(new CustomEvent('db_updated', {
-        detail: { action: 'clear_all_except_real_activities', timestamp: Date.now() }
-      }));
-
-      try {
-        const bc = new BroadcastChannel('npu_db_sync');
-        bc.postMessage({ type: 'cleared_to_real_activities', timestamp: Date.now() });
-        bc.close();
-      } catch (e) {}
-    }
-
-    return {
-      activitiesCount: await db.activities.count(),
-      studentsCount: await db.students.count(),
-      logsCount: 0,
-      reflectionsCount: 0
-    };
-  } catch (err) {
-    console.error('Error clearing data to real projects only:', err);
-    throw err;
-  }
-};
-
-export const ensureAdminData = async () => {
-  try {
-    const admin1 = await db.students.where('email').equals('srisuda.com@npu.ac.th').first();
-    if (!admin1) {
-      await db.students.put({
-        id: 'ADM-6601001',
-        name: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด',
-        email: 'srisuda.com@npu.ac.th',
-        prefix: 'ผศ.ดร.',
-        firstName: 'ศรีสุดา',
-        lastName: 'ด้วงโต้ด',
-        major: 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-        faculty: 'คณะครุศาสตร์',
-        university: 'มหาวิทยาลัยนครพนม',
-        year: 4
+  await db.transaction('rw', db.students, db.checkInLogs, db.reflections, db.retiredDemoStudents, async () => {
+    for (const current of unchangedDemoRecords) {
+      const checkInLogs = await db.checkInLogs.where('studentId').equals(current.id).toArray();
+      const reflections = await db.reflections.where('studentId').equals(current.id).toArray();
+      await db.retiredDemoStudents.put({
+        id: current.id,
+        student: current,
+        checkInLogs,
+        reflections,
+        archivedAt: new Date().toISOString()
       });
+      await db.checkInLogs.bulkDelete(checkInLogs.map(log => log.id));
+      await db.reflections.bulkDelete(reflections.map(reflection => reflection.id));
+      await db.students.delete(current.id);
+      retiredIds.push(current.id);
     }
-
-    const admin2 = await db.students.where('email').equals('sci.edu@npu.ac.th').first();
-    if (!admin2) {
-      await db.students.put({
-        id: 'ADM-6601002',
-        name: 'ผู้ดูแลระบบกิจกรรม คณะวิทยาศาสตร์',
-        email: 'sci.edu@npu.ac.th',
-        prefix: 'อาจารย์',
-        firstName: 'ผู้ดูแลระบบ',
-        lastName: 'คณะวิทยาศาสตร์',
-        major: 'สาขาวิชาฟิสิกส์ (ค.บ.)',
-        faculty: 'คณะวิทยาศาสตร์',
-        university: 'มหาวิทยาลัยนครพนม',
-        year: 4
-      });
-    }
-
-    // Auto-normalize any existing students in IndexedDB so their faculty and major match the official curriculum
-    const allStudents = await db.students.toArray();
-    for (const st of allStudents) {
-      let needsUpdate = false;
-      let newFaculty = st.faculty;
-      let newMajor = st.major;
-
-      if (st.faculty !== 'คณะครุศาสตร์' && st.faculty !== 'คณะวิทยาศาสตร์') {
-        const isSci = st.major?.includes('ฟิสิกส์') || st.major?.includes('ชีววิทยา') || st.faculty?.includes('วิทยาศาสตร์');
-        newFaculty = isSci ? 'คณะวิทยาศาสตร์' : 'คณะครุศาสตร์';
-        needsUpdate = true;
-      }
-
-      if (st.major === 'สาขาวิชาคณิตศาสตร์') {
-        newMajor = 'สาขาวิชาคณิตศาสตรศึกษา';
-        needsUpdate = true;
-      } else if (st.major === 'สาขาวิชาวิทยาศาสตร์ทั่วไป') {
-        newMajor = 'สาขาวิชาวิทยาศาสตร์';
-        needsUpdate = true;
-      } else if (st.major === 'สาขาวิชาวิทยาการคอมพิวเตอร์') {
-        newMajor = 'สาขาวิชาฟิสิกส์ (ค.บ.)';
-        newFaculty = 'คณะวิทยาศาสตร์';
-        needsUpdate = true;
-      } else if (st.major === 'สาขาวิชาเทคโนโลยีสารสนเทศ') {
-        newMajor = 'สาขาวิชาชีววิทยา (ค.บ.)';
-        newFaculty = 'คณะวิทยาศาสตร์';
-        needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-        await db.students.update(st.id, {
-          faculty: newFaculty,
-          major: newMajor
-        });
-      }
-    }
-
-    // 1. Remove mock user if present
-    await db.systemUsers.delete('usr_student_demo');
-
-    // 2. Upsert real administrator and staff accounts with official username and password
-    const realAccounts: SystemUser[] = [
-      {
-        id: 'usr_admin',
-        username: 'admin',
-        password: 'tpc@2026',
-        name: 'ผู้ดูแลระบบและผู้บริหาร (Admin คณะครุศาสตร์)',
-        email: 'admin@npu.ac.th',
-        role: 'approver',
-        faculty: 'คณะครุศาสตร์',
-        permissions: { canScan: true, canExport: true, canApprove: true, isSuperAdmin: true },
-        status: 'active',
-        lastLogin: new Date().toISOString()
-      },
-      {
-        id: 'usr_staffedu',
-        username: 'staffedu',
-        password: 'tpc@2026',
-        name: 'เจ้าหน้าที่กิจกรรม คณะครุศาสตร์ (Staff)',
-        email: 'staffedu@npu.ac.th',
-        role: 'staff',
-        faculty: 'คณะครุศาสตร์',
-        permissions: { canScan: true, canExport: true, canApprove: false, isSuperAdmin: false },
-        status: 'active',
-        lastLogin: new Date().toISOString()
-      }
-    ];
-
-    await db.systemUsers.bulkPut(realAccounts);
-  } catch (err) {
-    console.error('Error ensuring admin data:', err);
+  });
+  if (retiredIds.length > 0 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('db_updated', { detail: { action: 'demo_students_retired' } }));
   }
+  return retiredIds;
 };
+
 
 /**
  * Auto-cleans and normalizes any corrupted Thai-encoded logs and students in IndexedDB
@@ -323,28 +195,15 @@ export const cleanCorruptedThaiRecords = async () => {
       }
     }
 
-    // 2. Clean corrupted student mock records
+    // 2. Never invent a profile from a malformed local ID.
     for (const student of students) {
       if (hasThaiCharacters(student.id)) {
         const { studentId: cleanId } = extractAndCleanStudentID(student.id);
-        await db.students.delete(student.id);
-        
-        // If clean student doesn't exist, create it cleanly
         const existingClean = await db.students.get(cleanId);
-        if (!existingClean && cleanId) {
-          await db.students.put({
-            id: cleanId,
-            name: `นักศึกษา (${cleanId})`,
-            email: `${cleanId}@npu.ac.th`,
-            faculty: 'มหาวิทยาลัยนครพนม',
-            major: 'ไม่ระบุสาขา',
-            year: 1
-          });
-        }
+        if (existingClean) await db.students.delete(student.id);
       }
     }
   } catch (err) {
     console.error('Error cleaning corrupted records:', err);
   }
 };
-

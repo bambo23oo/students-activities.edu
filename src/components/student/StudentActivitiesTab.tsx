@@ -46,7 +46,7 @@ type ViewMode = 'table' | 'cards';
 export const StudentActivitiesTab: React.FC<StudentActivitiesTabProps> = ({ 
   allActivities, 
   logs,
-  studentId = '66309010001',
+  studentId = '',
   studentCohort,
   studentName,
   onOpenKpaModal

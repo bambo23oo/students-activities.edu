@@ -227,6 +227,45 @@ drop trigger if exists guard_reflection_update on public.reflections;
 create trigger guard_reflection_update before update on public.reflections
   for each row execute function private.guard_reflection_update();
 
+-- A confirmed Google Workspace account may claim only the existing student
+-- whose 12-digit ID exactly matches the local part of its @npu.ac.th email.
+-- Other university emails require a verified manual mapping by an administrator.
+create or replace function public.claim_student_access()
+returns boolean language plpgsql security definer set search_path = ''
+as $$
+declare
+  account_id uuid := (select auth.uid());
+  university_email text;
+  candidate_id text;
+begin
+  if account_id is null then return false; end if;
+  if exists (select 1 from public.user_access where user_id = account_id) then
+    return true;
+  end if;
+  select lower(u.email) into university_email
+  from auth.users u
+  where u.id = account_id and u.email_confirmed_at is not null
+    and exists (
+      select 1 from auth.identities i
+      where i.user_id = u.id and i.provider = 'google'
+    );
+  if university_email is null or university_email !~ '^[0-9]{12}@npu[.]ac[.]th$' then
+    return false;
+  end if;
+  candidate_id := split_part(university_email, '@', 1);
+  insert into public.user_access (user_id, role, student_id)
+  select account_id, 'student', s.id from public.students s
+  where s.id = candidate_id
+  on conflict do nothing;
+  return exists (
+    select 1 from public.user_access
+    where user_id = account_id and role = 'student' and student_id = candidate_id
+  );
+end;
+$$;
+revoke all on function public.claim_student_access() from public, anon;
+grant execute on function public.claim_student_access() to authenticated;
+
 commit;
 
 -- Assign access only from a trusted administration session after users are

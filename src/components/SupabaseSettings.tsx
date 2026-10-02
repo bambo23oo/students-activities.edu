@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db, clearAllAndKeepRealActivitiesOnly } from '../db/db';
-import { syncAllDataToSupabase } from '../services/supabaseApi';
+import { db } from '../db/db';
 import { getSupabaseClient, resetSupabaseClient, checkSupabaseHealth, SupabaseHealthCheck, getSupabaseConfig } from '../lib/supabase';
 import { exportDatabaseToExcel } from '../utils/exportUtils';
-import { seedTPCDemoData, simulateConcurrentLoad, ConcurrencyTestResult } from '../utils/seedUtils';
-import { ConfirmModal } from './ConfirmModal';
-import { BarcodeSimulatorModal } from './BarcodeSimulatorModal';
 import { 
   Database, 
   Link as LinkIcon, 
@@ -16,17 +12,12 @@ import {
   RefreshCw, 
   Server, 
   Download, 
-  Trash2, 
-  Sprout, 
   ExternalLink, 
   CheckCircle2, 
   XCircle, 
   HelpCircle,
   X,
-  Zap,
-  Cpu,
   ShieldCheck,
-  Users,
   HardDrive
 } from 'lucide-react';
 
@@ -40,16 +31,12 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
   
   const [isCopied, setIsCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [healthStatus, setHealthStatus] = useState<SupabaseHealthCheck | null>(null);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
   
   const [isConnected, setIsConnected] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [showClearModal, setShowClearModal] = useState(false);
-  const [showSeedModal, setShowSeedModal] = useState(false);
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
   // Local Storage Database counts
   const [localCounts, setLocalCounts] = useState<{
@@ -65,8 +52,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
   });
 
   // Concurrency Load Test State
-  const [isTestingLoad, setIsTestingLoad] = useState(false);
-  const [loadTestResult, setLoadTestResult] = useState<ConcurrencyTestResult | null>(null);
 
   const loadLocalCounts = async () => {
     try {
@@ -201,39 +186,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
     }
   };
 
-  const handleSyncAll = async () => {
-    if (!isConnected && (!healthStatus || !healthStatus.allTablesExist)) {
-      setSyncStatus({ type: 'error', message: 'กรุณาเชื่อมต่อ Supabase และสร้างตารางให้เรียบร้อยก่อนซิงก์' });
-      return;
-    }
-
-    setIsSyncing(true);
-    setSyncStatus({ type: null, message: '' });
-
-    try {
-      const students = await db.students.toArray();
-      const activities = await db.activities.toArray();
-      const checkInLogs = await db.checkInLogs.toArray();
-      const reflections = await db.reflections.toArray();
-
-      await syncAllDataToSupabase({
-        students,
-        activities,
-        checkInLogs,
-        reflections
-      });
-
-      setSyncStatus({ 
-        type: 'success', 
-      });
-    } catch (err: any) {
-      console.error('Sync Error:', err);
-      setSyncStatus({ type: 'error', message: 'การซิงก์ล้มเหลว: ' + err.message });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleCopySql = () => {
     navigator.clipboard.writeText(SUPABASE_SQL_TEMPLATE);
     setIsCopied(true);
@@ -250,47 +202,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
     } finally {
       setIsExporting(false);
       setTimeout(() => setSyncStatus({ type: null, message: '' }), 4000);
-    }
-  };
-
-  const handleClearDatabase = async () => {
-    try {
-      await clearAllAndKeepRealActivitiesOnly();
-      setShowClearModal(false);
-      setSyncStatus({ type: 'success', message: 'เคลียร์ข้อมูลทุกอย่างเรียบร้อยแล้ว คงเหลือเฉพาะ 18 โครงการจริงของคณะครุศาสตร์' });
-    } catch (err: any) {
-      setSyncStatus({ type: 'error', message: 'ล้างข้อมูลล้มเหลว: ' + err.message });
-    } finally {
-      setTimeout(() => setSyncStatus({ type: null, message: '' }), 4000);
-    }
-  };
-
-  const handleSeedData = async () => {
-    try {
-      await seedTPCDemoData();
-      setShowSeedModal(false);
-      setSyncStatus({ type: 'success', message: 'เพิ่มข้อมูลตัวอย่าง คณะครุศาสตร์ และคณะวิทยาศาสตร์ สำเร็จแล้ว' });
-    } catch (err: any) {
-      setSyncStatus({ type: 'error', message: 'เพิ่มข้อมูลล้มเหลว: ' + err.message });
-    } finally {
-      setTimeout(() => setSyncStatus({ type: null, message: '' }), 4000);
-    }
-  };
-
-  const handleRunLoadTest = async () => {
-    setIsTestingLoad(true);
-    try {
-      const result = await simulateConcurrentLoad(450, 4);
-      setLoadTestResult(result);
-      setSyncStatus({ 
-        type: 'success', 
-        message: `ทดสอบโหลดพร้อมกันสำเร็จ! จำลองนักศึกษา ${result.totalStudents} คน สแกน 4 จุดพร้อมกัน ใช้เวลา ${result.executionTimeMs} ms (${result.throughputPerSecond.toLocaleString()} สแกน/วิ)` 
-      });
-    } catch (err: any) {
-      setSyncStatus({ type: 'error', message: 'การทดสอบโหลดล้มเหลว: ' + err.message });
-    } finally {
-      setIsTestingLoad(false);
-      setTimeout(() => setSyncStatus({ type: null, message: '' }), 6000);
     }
   };
 
@@ -654,14 +565,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
             บันทึกการเชื่อมต่อ
           </button>
 
-          <button
-            onClick={handleSyncAll}
-            disabled={!isConnected || isSyncing}
-            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm active:scale-95"
-          >
-            {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
-            ซิงก์ข้อมูลทั้งหมดไป Supabase ทันที
-          </button>
         </div>
       </div>
 
@@ -675,13 +578,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={() => setIsSimulatorOpen(true)}
-            className="px-4 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 active:scale-95"
-          >
-            <Zap className="w-4 h-4 text-white" />
-            🎯 จำลองการเทสสแกนบาร์โค้ด & อัปเดตกิจกรรม
-          </button>
-          <button
             onClick={handleExport}
             disabled={isExporting}
             className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 active:scale-95"
@@ -689,101 +585,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
             {isExporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             ดาวน์โหลดเป็น Excel (.xlsx)
           </button>
-          <button
-            onClick={() => setShowSeedModal(true)}
-            className="px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 active:scale-95"
-          >
-            <Sprout className="w-4 h-4 text-amber-700" />
-            เติมข้อมูลทดสอบ (TPC Demo)
-          </button>
-          <button
-            onClick={() => setShowClearModal(true)}
-            className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 active:scale-95 border border-rose-200"
-          >
-            <Trash2 className="w-4 h-4" />
-            🧹 เคลียร์ข้อมูลทุกอย่าง เหลือแค่โครงการจริง
-          </button>
         </div>
-      </div>
-
-      {/* Concurrency & Multi-Scanner Load Test Benchmark Section */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-xl bg-orange-100 text-[#EA580C] flex items-center justify-center font-bold text-sm shadow-inner">
-                ⚡
-              </span>
-              <h3 className="text-base font-black text-slate-900">
-                จำลองการสแกนในเบราว์เซอร์ (ไม่ใช่การทดสอบ 450 ผู้ใช้จริง)
-              </h3>
-            </div>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              เครื่องมือนี้ตรวจการทำงานในเครื่องเดียวเท่านั้น ผลที่ได้ใช้ยืนยันความจุของฐานข้อมูลหรือจำนวนผู้ใช้พร้อมกันไม่ได้
-            </p>
-          </div>
-
-          <button
-            onClick={handleRunLoadTest}
-            disabled={isTestingLoad}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
-          >
-            {isTestingLoad ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            <span>{isTestingLoad ? 'กำลังทดสอบโหลด...' : 'เริ่มทดสอบจำลอง 450 คน'}</span>
-          </button>
-        </div>
-
-        {/* Benchmark Results Display */}
-        {loadTestResult && (
-          <div className="space-y-4 animate-in fade-in duration-200">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-center">
-                <div className="text-[11px] text-slate-500 font-bold">นักศึกษาที่จำลอง</div>
-                <div className="text-lg font-black text-slate-900 mt-0.5">{loadTestResult.totalStudents} คน</div>
-                <div className="text-[10px] text-emerald-600 font-medium">บันทึกสำเร็จครบถ้วน</div>
-              </div>
-
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-center">
-                <div className="text-[11px] text-emerald-800 font-bold">เช็คอินสำเร็จ</div>
-                <div className="text-lg font-black text-emerald-700 mt-0.5">{loadTestResult.successfulCheckIns}</div>
-                <div className="text-[10px] text-emerald-600 font-medium">1 คน / 1 สิทธิ์</div>
-              </div>
-
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                <div className="text-[11px] text-amber-800 font-bold">ป้องกันการยิงซ้ำ</div>
-                <div className="text-lg font-black text-amber-700 mt-0.5">{loadTestResult.duplicateAttemptsBlocked} ครั้ง</div>
-                <div className="text-[10px] text-amber-600 font-medium">บล็อกสแกนซ้ำ 100%</div>
-              </div>
-
-              <div className="p-3 bg-sky-50 border border-sky-200 rounded-2xl text-center">
-                <div className="text-[11px] text-sky-800 font-bold">ช่องสแกนจำลอง</div>
-                <div className="text-lg font-black text-sky-700 mt-0.5">{loadTestResult.stationsUsed} สถานี</div>
-                <div className="text-[10px] text-sky-600 font-medium">ยิงพร้อมกันคู่ขนาน</div>
-              </div>
-
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl text-center">
-                <div className="text-[11px] text-purple-800 font-bold">เวลาประมวลผลรวม</div>
-                <div className="text-lg font-black text-purple-700 mt-0.5">{loadTestResult.executionTimeMs} ms</div>
-                <div className="text-[10px] text-purple-600 font-medium">ต่ำกว่า 0.1 วินาที</div>
-              </div>
-
-              <div className="p-3 bg-orange-50 border border-orange-200 rounded-2xl text-center">
-                <div className="text-[11px] text-orange-800 font-bold">ความเร็ว Throughput</div>
-                <div className="text-lg font-black text-[#EA580C] mt-0.5">
-                  {loadTestResult.throughputPerSecond.toLocaleString()}
-                </div>
-                <div className="text-[10px] text-orange-600 font-medium">สแกนต่อวินาที</div>
-              </div>
-            </div>
-
-            <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>
-                <strong>ผลการจำลองในเครื่อง:</strong> ยังต้องทดสอบหลายอุปกรณ์กับฐานข้อมูลจริงก่อนสรุปว่ารองรับผู้ใช้พร้อมกัน 400–500 คน
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* SQL Setup Guide */}
@@ -811,36 +613,6 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
           <pre>{SUPABASE_SQL_TEMPLATE}</pre>
         </div>
       </div>
-
-      {/* Clear Database Modal */}
-      <ConfirmModal
-        isOpen={showClearModal}
-        title="ยืนยันการเคลียร์ข้อมูลทุกอย่าง เหลือแค่โครงการจริง"
-        message="คุณต้องการล้างประวัติการเช็คอินทั้งหมด ล้างการถอดบทเรียน และคงเหลือเฉพาะ 18 โครงการจริงของคณะครุศาสตร์ ม.นครพนม ใช่หรือไม่?"
-        confirmText="ยืนยันเคลียร์ข้อมูลเหลือแค่โครงการจริง"
-        cancelText="ยกเลิก"
-        onConfirm={handleClearDatabase}
-        onCancel={() => setShowClearModal(false)}
-        variant="danger"
-      />
-
-      {/* Seed Demo Data Modal */}
-      <ConfirmModal
-        isOpen={showSeedModal}
-        title="เติมข้อมูลตัวอย่างนักศึกษา (คณะครุศาสตร์ & คณะวิทยาศาสตร์)"
-        message="ระบบจะเพิ่มข้อมูลตัวอย่างนักศึกษา คณะครุศาสตร์ และคณะวิทยาศาสตร์ มหาวิทยาลัยนครพนม พร้อมกิจกรรมและประวัติการสแกน เพื่อความสะดวกในการทดสอบ"
-        confirmText="เติมข้อมูลตัวอย่าง"
-        cancelText="ยกเลิก"
-        onConfirm={handleSeedData}
-        onCancel={() => setShowSeedModal(false)}
-        variant="primary"
-      />
-
-      {/* Barcode Simulator Modal */}
-      <BarcodeSimulatorModal
-        isOpen={isSimulatorOpen}
-        onClose={() => setIsSimulatorOpen(false)}
-      />
 
     </div>
   );

@@ -117,7 +117,7 @@ export function extractAndCleanStudentID(rawInput: string): ExtractedStudentID {
     } catch (e) {}
   }
 
-  // 3. URL format: https://.../student/66309010001
+  // 3. URL format: https://.../student/{student-id}
   if (raw.includes('/')) {
     source = 'digital';
     const segments = raw.split('/');

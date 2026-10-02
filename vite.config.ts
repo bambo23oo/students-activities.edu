@@ -13,12 +13,11 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         devOptions: { enabled: true },
         manifest: {
-          name: 'NPU Activity Tracker',
-          short_name: 'NPU Tracker',
-          theme_color: '#1e3a8a',
+          name: 'สมุดบันทึกกิจกรรมดิจิทัล',
+          short_name: 'สมุดกิจกรรม',
+          theme_color: '#EA580C',
           icons: [
-            { src: 'https://cdn-icons-png.flaticon.com/512/1904/1904425.png', sizes: '192x192', type: 'image/png' },
-            { src: 'https://cdn-icons-png.flaticon.com/512/1904/1904425.png', sizes: '512x512', type: 'image/png' }
+            { src: '/npu-logo.svg', sizes: 'any', type: 'image/svg+xml' }
           ]
         },
         workbox: { maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, 

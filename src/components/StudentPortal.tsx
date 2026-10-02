@@ -26,6 +26,7 @@ import {
   Key
 } from 'lucide-react';
 import { MobileDeviceTesterModal } from './MobileDeviceTesterModal';
+import { NPULogo } from './NPULogo';
 
 import { StudentOverviewTab } from './student/StudentOverviewTab';
 import { StudentActivitiesTab } from './student/StudentActivitiesTab';
@@ -35,7 +36,6 @@ import { StudentSettingsTab } from './student/StudentSettingsTab';
 import { StudentPassModal } from './student/StudentPassModal';
 import { StudentReflectionModal } from './student/StudentReflectionModal';
 import { ActivityTranscriptModal } from './transcript/ActivityTranscriptModal';
-import { EditStudentMajorModal } from './student/EditStudentMajorModal';
 
 export type StudentNavTab = 'overview' | 'activities' | 'messages' | 'settings';
 
@@ -49,15 +49,14 @@ interface StudentPortalProps {
 }
 
 export const StudentPortal: React.FC<StudentPortalProps> = ({ 
-  studentId = '66309010001', 
-  studentName = 'นายกิตติศักดิ์ ศรีวรสาร', 
-  studentEmail = '66309010001@npu.ac.th',
+  studentId = '',
+  studentName = '',
+  studentEmail = '',
   onRoleChange,
   onLogout,
-  isUserAdmin = true
+  isUserAdmin = false
 }) => {
   const [activeStudentId, setActiveStudentId] = useState<string>(studentId);
-  const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [logs, setLogs] = useState<(CheckInLog & { activity?: Activity; reflection?: Reflection })[]>([]);
   const [allActivities, setAllActivities] = useState<Activity[]>([]);
   const [studentProfile, setStudentProfile] = useState<Student | null>(null);
@@ -66,7 +65,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   
   // Modals & Popovers
   const [showPassModal, setShowPassModal] = useState(false);
-  const [showEditMajorModal, setShowEditMajorModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showStudentProfileModal, setShowStudentProfileModal] = useState(false);
@@ -147,35 +145,9 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const loadStudentData = async (targetId?: string) => {
     const idToQuery = targetId || activeStudentId || studentId;
 
-    // Load available students list for testing & switching
-    try {
-      const studentList = await db.students.toArray();
-      setAllStudents(studentList);
-    } catch (e) {
-      console.warn('Failed to load students list:', e);
-    }
-
-    // 1. Fetch Student Profile with flexible matching
+    // Only the student ID verified by Supabase may be displayed.
     let profile = idToQuery ? await db.students.get(idToQuery) : null;
-    if (!profile && idToQuery) {
-      profile = await db.students.where('id').equalsIgnoreCase(idToQuery).first();
-    }
-    if (!profile && studentEmail) {
-      profile = await db.students.where('email').equalsIgnoreCase(studentEmail).first();
-    }
-    if (profile) {
-      setStudentProfile(profile);
-    } else {
-      setStudentProfile({
-        id: idToQuery,
-        name: studentName,
-        email: studentEmail,
-        faculty: 'คณะครุศาสตร์',
-        major: 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-        university: 'มหาวิทยาลัยนครพนม',
-        year: 4
-      });
-    }
+    setStudentProfile(profile || null);
 
     const effectiveId = profile?.id || idToQuery;
 
@@ -184,25 +156,9 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
     // 3. Fetch Student Check-in Logs (High-speed indexed lookup by studentId)
     let studentLogs = await db.checkInLogs.where('studentId').equals(effectiveId).toArray();
-    if (studentLogs.length === 0) {
-      // Fallback with flexible matching for dash/space variations
-      const allLogs = await db.checkInLogs.toArray();
-      const cleanEffective = effectiveId.trim().toUpperCase();
-      const cleanDigits = cleanEffective.replace(/[^A-Z0-9]/g, '');
-
-      studentLogs = allLogs.filter(log => {
-        if (!log.studentId) return false;
-        const cleanLogId = log.studentId.trim().toUpperCase();
-        const cleanLogDigits = cleanLogId.replace(/[^A-Z0-9]/g, '');
-        return cleanLogId === cleanEffective || (cleanDigits.length >= 6 && cleanLogDigits === cleanDigits);
-      });
-    }
 
     // 4. Fetch Reflections for this student (Indexed by studentId)
-    let studentReflections = await db.reflections.where('studentId').equals(effectiveId).toArray();
-    if (studentReflections.length === 0) {
-      studentReflections = await db.reflections.toArray();
-    }
+    const studentReflections = await db.reflections.where('studentId').equals(effectiveId).toArray();
     const reflectionMap = new Map<string, Reflection>();
     studentReflections.forEach(ref => {
       if (ref.logId) reflectionMap.set(ref.logId, ref);
@@ -240,17 +196,9 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
   const handleUpdateProfileImage = async (newImageUrl: string) => {
     try {
-      const effectiveId = studentProfile?.id || studentId;
+      if (!studentProfile || studentProfile.id !== studentId) throw new Error('ไม่พบข้อมูลนักศึกษาที่ผ่านการยืนยัน');
       const updatedProfile: Student = {
-        ...(studentProfile || {
-          id: effectiveId,
-          name: studentName,
-          email: studentEmail,
-          faculty: 'คณะครุศาสตร์',
-          major: 'สาขาวิชาคอมพิวเตอร์ศึกษา',
-          university: 'มหาวิทยาลัยนครพนม',
-          year: 4
-        }),
+        ...studentProfile,
         profileImage: newImageUrl
       };
       await db.students.put(updatedProfile);
@@ -259,49 +207,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
       console.error('Failed to update student profile image:', err);
-    }
-  };
-
-  const handleUpdateStudentMajor = async (updatedFields: { major: string; faculty: string; year: number }) => {
-    try {
-      const effectiveId = studentProfile?.id || activeStudentId || studentId;
-      const updatedProfile: Student = {
-        ...(studentProfile || {
-          id: effectiveId,
-          name: studentName,
-          email: studentEmail,
-          university: 'มหาวิทยาลัยนครพนม'
-        }),
-        major: updatedFields.major,
-        faculty: updatedFields.faculty,
-        year: updatedFields.year
-      };
-      await db.students.put(updatedProfile);
-      setStudentProfile(updatedProfile);
-
-      // Update student switcher list
-      setAllStudents(prev => prev.map(s => s.id === updatedProfile.id ? updatedProfile : s));
-
-      // Broadcast update event so all open views & modals sync
-      window.dispatchEvent(new CustomEvent('db_updated', {
-        detail: {
-          studentId: updatedProfile.id,
-          action: 'major_updated',
-          major: updatedProfile.major
-        }
-      }));
-
-      try {
-        const bc = new BroadcastChannel('npu_db_sync');
-        bc.postMessage({ type: 'profile_updated', studentId: updatedProfile.id });
-        bc.close();
-      } catch (e) {}
-
-      setToastMessage(`บันทึกข้อมูลสาขาวิชา (${updatedProfile.major}) เรียบร้อยแล้ว`);
-      setTimeout(() => setToastMessage(null), 3500);
-    } catch (err) {
-      console.error('Failed to update student major:', err);
-      throw err;
     }
   };
 
@@ -328,20 +233,14 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         
         <div className="flex flex-col items-center gap-5 w-full">
           
-          {/* Logo Icon (Playful Geometric Interlocking Shape) */}
-          <div 
+          <button
+            type="button"
             onClick={() => setNavTab('overview')}
-            className="w-12 h-12 flex items-center justify-center relative cursor-pointer" 
-            title="คณะครุศาสตร์ ม.นครพนม"
+            className="w-14 h-16 flex items-center justify-center bg-white border-2 border-[#FACC15] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            title="กลับสู่หน้าภาพรวม สมุดบันทึกกิจกรรมดิจิทัล"
           >
-            <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none">
-              <circle cx="16" cy="14" r="5" fill="#EF4444" />
-              <path d="M11 23C11 20 13 18 16 18H20V32H15C12.8 32 11 30.2 11 28V23Z" fill="#EF4444" />
-              <circle cx="32" cy="14" r="5" fill="#8B5CF6" />
-              <path d="M37 23C37 20 35 18 32 18H28V32H33C35.2 32 37 30.2 37 28V23Z" fill="#8B5CF6" />
-              <rect x="18" y="24" width="12" height="6" fill="#F59E0B" rx="2" />
-            </svg>
-          </div>
+            <NPULogo size="custom" className="w-10 h-14" />
+          </button>
 
           {/* Navigation Items List */}
           <nav className="flex flex-col items-center gap-2.5 w-full px-2">
@@ -464,31 +363,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               <span className="hidden sm:inline">ทดสอบมือถือ</span>
             </button>
             
-            {/* Student Switcher Dropdown */}
-            {allStudents.length > 0 && (
-              <div className="flex items-center gap-1.5 bg-white border-2 border-[#18181B] px-2 py-1 text-xs font-bold text-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <Users className="w-3.5 h-3.5 text-[#EA580C] shrink-0" />
-                <span className="hidden md:inline text-stone-500 font-bold">นักศึกษา:</span>
-                <select
-                  value={activeStudentId}
-                  onChange={(e) => {
-                    const newId = e.target.value;
-                    setActiveStudentId(newId);
-                    localStorage.setItem('app_student_id', newId);
-                    loadStudentData(newId);
-                  }}
-                  className="bg-transparent font-black text-stone-900 outline-none cursor-pointer max-w-[130px] sm:max-w-[180px] truncate"
-                  title="สลับดูข้อมูลนักศึกษา"
-                >
-                  {allStudents.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {/* Search Box (Desktop) */}
             <div className="relative hidden lg:block w-64">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-700" />
@@ -668,27 +542,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           </div>
         </header>
 
-        {/* Security Password Change Banner for Default Password Users */}
-        {studentProfile && (!studentProfile.isPasswordChanged || studentProfile.password === studentProfile.id || !studentProfile.password) && (
-          <div className="bg-amber-100/90 border-b-2 border-amber-300 px-3 sm:px-6 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
-            <div className="flex items-center gap-2 text-xs text-amber-950 font-bold">
-              <span className="p-1 bg-amber-200 text-amber-900 rounded-md shrink-0">
-                <Lock className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                คุณกำลังใช้งานรหัสผ่านเริ่มต้น (รหัสนักศึกษา: {currentStudentId}) เพื่อความปลอดภัยกรุณาเปลี่ยนเป็นรหัสผ่านส่วนตัว
-              </span>
-            </div>
-            <button
-              onClick={() => setNavTab('settings')}
-              className="px-3 py-1 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-lg text-xs font-black shrink-0 transition-colors shadow-xs active:scale-95 flex items-center justify-center gap-1 self-start sm:self-auto"
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>เปลี่ยนรหัสผ่านทันที</span>
-            </button>
-          </div>
-        )}
-
         {/* ======================================================================= */}
         {/* MAIN BODY CONTENT (Dynamically Driven by navTab)                        */}
         {/* ======================================================================= */}
@@ -704,7 +557,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               onOpenSubmitModal={(id) => setSelectedLogIdForKpa(id)}
               onOpenPassModal={() => setShowPassModal(true)}
               onNavigateTab={(tab) => setNavTab(tab)}
-              onOpenEditMajor={() => setShowEditMajorModal(true)}
             />
           )}
 
@@ -729,7 +581,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               onLogout={onLogout}
               isUserAdmin={isUserAdmin}
               onUpdateProfileImage={handleUpdateProfileImage}
-              onOpenEditMajor={() => setShowEditMajorModal(true)}
             />
           )}
 
@@ -747,10 +598,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         studentId={currentStudentId}
         studentName={effectiveStudentName}
         onUpdateProfileImage={handleUpdateProfileImage}
-        onOpenEditMajor={() => {
-          setShowPassModal(false);
-          setShowEditMajorModal(true);
-        }}
       />
 
       {/* Step 5: K-P-A Reflection Submission Modal */}
@@ -801,10 +648,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 studentEmail={studentProfile?.email || studentEmail}
                 logs={logs}
                 onUpdateProfileImage={handleUpdateProfileImage}
-                onOpenEditMajor={() => {
-                  setShowStudentProfileModal(false);
-                  setShowEditMajorModal(true);
-                }}
               />
             </div>
           </div>
@@ -819,15 +662,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         </div>
       )}
 
-      {/* Edit Student Major Modal */}
-      <EditStudentMajorModal
-        isOpen={showEditMajorModal}
-        onClose={() => setShowEditMajorModal(false)}
-        student={studentProfile}
-        studentId={currentStudentId}
-        studentName={effectiveStudentName}
-        onSave={handleUpdateStudentMajor}
-      />
 
       {/* ========================================================================= */}
       {/* MOBILE BOTTOM NAVIGATION BAR (iOS & Android Ergonomics)                    */}

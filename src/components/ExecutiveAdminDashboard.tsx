@@ -31,12 +31,9 @@ import { ApprovalManager } from './admin/ApprovalManager';
 import { ActivityManager } from './ActivityManager';
 import { ReportsView } from './ReportsView';
 import { SupabaseSettings } from './SupabaseSettings';
-import { SuperAdminPanel } from './admin/SuperAdminPanel';
 import { db } from '../db/db';
-import { UserRole } from '../types';
 
 interface ExecutiveAdminDashboardProps {
-  onRoleChange: (newRole: UserRole) => void;
   onLogout: () => void;
   userName?: string;
   userEmail?: string;
@@ -44,11 +41,10 @@ interface ExecutiveAdminDashboardProps {
 }
 
 export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = ({
-  onRoleChange,
   onLogout,
-  userName = 'ผศ.ดร.ศรีสุดา ด้วงโต้ด',
-  userEmail = 'srisuda.edu@npu.ac.th',
-  isUserAdmin = true
+  userName = 'ผู้อนุมัติ',
+  userEmail = '',
+  isUserAdmin = false
 }) => {
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'people' | 'approvals' | 'events' | 'curriculum' | 'attendance' | 'reports' | 'database' | 'superadmin' | 'announcements' | 'settings'
@@ -82,7 +78,6 @@ export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = (
     { id: 'attendance', label: 'Attendance', icon: CheckSquare },
     { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
     { id: 'database', label: 'Database', icon: Database },
-    { id: 'superadmin', label: 'Super Admin', icon: ShieldCheck },
   ];
 
   return (
@@ -354,26 +349,6 @@ export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = (
                     <p className="text-[11px] text-stone-500 truncate font-mono">{userEmail}</p>
                   </div>
 
-                  <div className="py-1">
-                    <div className="px-3 py-1 text-[10px] font-black text-stone-400 uppercase tracking-wider">
-                      สลับมุมมองการทำงาน
-                    </div>
-                    <button
-                      onClick={() => { onRoleChange('student'); setUserDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#F4EFE6] flex items-center gap-2 text-stone-800 font-semibold"
-                    >
-                      <span>🎓</span>
-                      <span>มุมมองนักศึกษา (Student)</span>
-                    </button>
-                    <button
-                      onClick={() => { onRoleChange('staff'); setUserDropdownOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#F4EFE6] flex items-center gap-2 text-stone-800 font-semibold"
-                    >
-                      <span>📷</span>
-                      <span>มุมมองเจ้าหน้าที่สแกน (Staff)</span>
-                    </button>
-                  </div>
-
                   <div className="border-t-2 border-[#18181B]/10 pt-1">
                     <button
                       onClick={onLogout}
@@ -466,13 +441,6 @@ export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = (
                   <h2 className="text-base font-black text-[#18181B]">ระบบบันทึกเวลาและจุดสแกนเนอร์ (Live Scanner Hub)</h2>
                   <p className="text-xs text-stone-500 font-medium">สถิติการสแกนผ่านเครื่องยิง USB Barcode และกล้องมือถือ QR Code</p>
                 </div>
-                <button
-                  onClick={() => onRoleChange('staff')}
-                  className="px-4 py-2 bg-[#18181B] hover:bg-stone-800 text-[#FACC15] rounded-xl text-xs font-bold border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 transition-all"
-                >
-                  <QrCode className="w-4 h-4 text-[#FACC15]" />
-                  <span>เปิดโหมดเครื่องยิงสแกนเนอร์</span>
-                </button>
               </div>
               <ReportsView />
             </div>
@@ -498,13 +466,6 @@ export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = (
               </div>
               <SupabaseSettings />
             </div>
-          )}
-
-          {activeTab === 'superadmin' && (
-            <SuperAdminPanel 
-              onRoleChange={onRoleChange}
-              currentAdminEmail={userEmail}
-            />
           )}
 
           {activeTab === 'announcements' && (
@@ -549,18 +510,6 @@ export const ExecutiveAdminDashboard: React.FC<ExecutiveAdminDashboardProps> = (
                   <span className="text-stone-500 block text-[11px] font-mono">{userEmail}</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-[#18181B] block">สิทธิ์การใช้งาน (User Role)</label>
-                  <select
-                    onChange={(e) => onRoleChange(e.target.value as UserRole)}
-                    defaultValue="approver"
-                    className="w-full p-2.5 bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl outline-none font-bold text-xs"
-                  >
-                    <option value="approver">🛡️ โหมดผู้บริหาร & คณะกรรมการ (Approver / Executive)</option>
-                    <option value="staff">📷 โหมดเจ้าหน้าที่ประจำจุดสแกน (Staff Scanner)</option>
-                    <option value="student">🎓 โหมดนักศึกษา (Student)</option>
-                  </select>
-                </div>
               </div>
             </div>
           )}
