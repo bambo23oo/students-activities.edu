@@ -19,6 +19,7 @@ import {
   FileCheck
 } from 'lucide-react';
 import dayjs from 'dayjs';
+import { getEvidenceUrl, reviewReflection } from '../../services/reflectionRepository';
 
 interface EnrichedLog extends CheckInLog {
   studentName: string;
@@ -34,6 +35,7 @@ export const ApprovalManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeModalItem, setActiveModalItem] = useState<EnrichedLog | null>(null);
+  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
 
   // Approval / Rejection Safety Modals
@@ -54,6 +56,12 @@ export const ApprovalManager: React.FC = () => {
     return () => window.removeEventListener('db_updated', handleSync);
   }, []);
 
+  useEffect(() => {
+    const ref = activeModalItem?.reflection;
+    setEvidencePreviewUrl(ref?.evidenceUrl || '');
+    if (ref?.evidencePath) getEvidenceUrl(ref.evidencePath).then(setEvidencePreviewUrl).catch(() => setEvidencePreviewUrl(''));
+  }, [activeModalItem]);
+
   const loadPendingLogs = async () => {
     // Step 7: Approved by staff (staffStatus === 'verified') and waiting for Assistant Dean (execStatus === 'pending')
     const logs = await db.checkInLogs.filter(log => log.staffStatus === 'verified' && log.execStatus === 'pending').toArray();
@@ -66,10 +74,11 @@ export const ApprovalManager: React.FC = () => {
         reflection = await db.reflections.get(`ref_${log.id}`);
       }
 
+      if (!reflection || reflection.status !== 'pending_step2') return null;
       return {
         ...log,
         studentName: student?.name || `รหัส ${log.studentId}`,
-        major: student?.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา',
+        major: student?.major || 'ไม่ระบุสาขาวิชา',
         activityName: activity?.name || `กิจกรรมรหัส ${log.activityId}`,
         activityDate: activity?.date || '',
         hours: activity?.hours || 3,
@@ -78,38 +87,19 @@ export const ApprovalManager: React.FC = () => {
     }));
 
     // Sort newest first
-    enriched.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setPendingLogs(enriched);
+    const ready = enriched.filter(item => item !== null) as EnrichedLog[];
+    ready.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setPendingLogs(ready);
     setSelectedIds(new Set());
   };
 
   const handleApprove = async (logItem: EnrichedLog) => {
-    const now = new Date().toISOString();
-
-    // 1. Update CheckInLog
-    await db.checkInLogs.update(logItem.id, { 
-      execStatus: 'approved',
-      approvedBy: approverName 
-    });
-
-    // 2. Update Reflection to approved
-    if (logItem.reflection) {
-      await db.reflections.update(logItem.reflection.id, {
-        status: 'approved',
-        step2ApprovedAt: now,
-        step2ApprovedBy: approverName
-      });
-    } else {
-      // Create reflection if didn't exist
-      await db.reflections.put({
-        id: `ref_${logItem.id}`,
-        logId: logItem.id,
-        studentId: logItem.studentId,
-        activityId: logItem.activityId,
-        status: 'approved',
-        step2ApprovedAt: now,
-        step2ApprovedBy: approverName
-      });
+    if (!logItem.reflection) return;
+    try {
+      await reviewReflection(logItem.reflection, logItem.id, 'approved');
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'อนุมัติไม่สำเร็จ');
+      return;
     }
 
     // 3. Log to System Audit Trail
@@ -149,12 +139,12 @@ export const ApprovalManager: React.FC = () => {
       return;
     }
 
-    await db.checkInLogs.update(rejectTarget.id, { execStatus: 'rejected' });
-    if (rejectTarget.reflection) {
-      await db.reflections.update(rejectTarget.reflection.id, {
-        status: 'rejected',
-        rejectionReason: rejectReason.trim()
-      });
+    if (!rejectTarget.reflection) return;
+    try {
+      await reviewReflection(rejectTarget.reflection, rejectTarget.id, 'rejected', rejectReason.trim());
+    } catch (error) {
+      setRejectError(error instanceof Error ? error.message : 'ส่งกลับไม่สำเร็จ');
+      return;
     }
 
     await logSystemAction(
@@ -184,33 +174,19 @@ export const ApprovalManager: React.FC = () => {
 
   const handleBulkApprove = async () => {
     if (selectedIds.size === 0) return;
-    const now = new Date().toISOString();
     const targets = pendingLogs.filter(l => selectedIds.has(l.id));
-
-    await Promise.all(targets.map(async (item) => {
-      await db.checkInLogs.update(item.id, { 
-        execStatus: 'approved',
-        approvedBy: approverName
-      });
-
-      if (item.reflection) {
-        await db.reflections.update(item.reflection.id, {
-          status: 'approved',
-          step2ApprovedAt: now,
-          step2ApprovedBy: approverName
-        });
-      } else {
-        await db.reflections.put({
-          id: `ref_${item.id}`,
-          logId: item.id,
-          studentId: item.studentId,
-          activityId: item.activityId,
-          status: 'approved',
-          step2ApprovedAt: now,
-          step2ApprovedBy: approverName
-        });
+    let approved = 0;
+    for (const item of targets) {
+      if (!item.reflection) continue;
+      try {
+        await reviewReflection(item.reflection, item.id, 'approved');
+        approved++;
+      } catch (error) {
+        setFeedback(`อนุมัติแล้ว ${approved} รายการ อีก ${targets.length - approved} รายการไม่สำเร็จ`);
+        loadPendingLogs();
+        return;
       }
-    }));
+    }
 
     try {
       const bc = new BroadcastChannel('npu_db_sync');
@@ -219,7 +195,7 @@ export const ApprovalManager: React.FC = () => {
     } catch (e) {}
     window.dispatchEvent(new CustomEvent('db_updated', { detail: { action: 'bulk_step2_approved' } }));
 
-    setFeedback(`✓ อนุมัติลง Transcript สำเร็จทั้งหมด ${targets.length} รายการ`);
+    setFeedback(`✓ อนุมัติลง Transcript สำเร็จทั้งหมด ${approved} รายการ`);
     setTimeout(() => setFeedback(null), 3000);
     loadPendingLogs();
   };
@@ -456,7 +432,7 @@ export const ApprovalManager: React.FC = () => {
                     </div>
                   </div>
 
-                  {activeModalItem.reflection.evidenceUrl && (
+                  {evidencePreviewUrl && (
                     <div className="bg-white p-4 border-2 border-[#18181B] rounded-xl space-y-2">
                       <div className="font-black text-[#18181B] flex items-center gap-1.5 text-xs uppercase">
                         <ImageIcon className="w-4 h-4 text-emerald-600" />
@@ -464,7 +440,7 @@ export const ApprovalManager: React.FC = () => {
                       </div>
                       <div className="border-2 border-stone-200 rounded-lg overflow-hidden max-h-60 bg-stone-100 flex items-center justify-center">
                         <img 
-                          src={activeModalItem.reflection.evidenceUrl} 
+                          src={evidencePreviewUrl}
                           alt="Proof" 
                           className="max-h-60 w-auto object-contain"
                         />

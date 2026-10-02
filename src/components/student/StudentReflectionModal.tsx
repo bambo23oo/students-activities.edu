@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../db/db';
 import { Activity, CheckInLog, Reflection } from '../../types';
+import { getEvidenceUrl, saveReflection } from '../../services/reflectionRepository';
 import { 
   X, 
   Send, 
@@ -47,6 +48,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
   const [practice, setPractice] = useState('');
   const [attitude, setAttitude] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState<string>('');
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -62,6 +64,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
       setPractice('');
       setAttitude('');
       setEvidenceUrl('');
+      setEvidenceFile(null);
       setFeedbackMsg(null);
     }
   }, [isOpen, logId]);
@@ -86,13 +89,15 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
         setKnowledge(ref.knowledge || '');
         setPractice(ref.practice || '');
         setAttitude(ref.attitude || '');
-        setEvidenceUrl(ref.evidenceUrl || '');
+        setEvidenceUrl(ref.evidencePath ? await getEvidenceUrl(ref.evidencePath).catch(() => '') : (ref.evidenceUrl || ''));
+        setEvidenceFile(null);
       } else {
         setReflection(null);
         setKnowledge('');
         setPractice('');
         setAttitude('');
         setEvidenceUrl('');
+        setEvidenceFile(null);
       }
     } catch (e) {
       console.error('Error loading reflection data:', e);
@@ -107,6 +112,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
       alert('ขนาดไฟล์ภาพต้องไม่เกิน 5MB');
       return;
     }
+    setEvidenceFile(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -142,12 +148,12 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
         knowledge: knowledge.trim(),
         practice: practice.trim(),
         attitude: attitude.trim(),
-        evidenceUrl: evidenceUrl || undefined,
+        evidencePath: evidenceUrl ? reflection?.evidencePath : undefined,
         status: submitStatus,
         submittedAt: submitStatus === 'pending_step1' ? now : reflection?.submittedAt
       };
 
-      await db.reflections.put(updatedReflection);
+      await saveReflection(updatedReflection, evidenceFile || undefined);
 
       // Update checkInLog audit trail
       const currentLog = await db.checkInLogs.get(log.id);
@@ -173,8 +179,8 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
 
       setFeedbackMsg({
         text: submitStatus === 'pending_step1' 
-          ? 'บันทึกในเครื่องแล้ว แต่ยังไม่ยืนยันว่าข้อมูลถึงเจ้าหน้าที่'
-          : 'บันทึกร่างในเครื่องแล้ว',
+          ? 'ส่งบันทึก K-P-A ให้เจ้าหน้าที่แล้ว'
+          : 'บันทึกร่างเรียบร้อยแล้ว',
         type: 'success'
       });
 
@@ -196,7 +202,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
   const isApproved = reflection?.status === 'approved';
   const isPendingStep2 = reflection?.status === 'pending_step2';
   const isPendingStep1 = reflection?.status === 'pending_step1';
-  const isLocked = isApproved || isPendingStep2;
+  const isLocked = isApproved || isPendingStep2 || isPendingStep1;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -390,7 +396,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
                   />
                   {!isLocked && (
                     <button
-                      onClick={() => setEvidenceUrl('')}
+                      onClick={() => { setEvidenceUrl(''); setEvidenceFile(null); }}
                       className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-lg border-2 border-[#18181B] hover:bg-rose-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                       title="ลบรูปภาพ"
                     >
@@ -402,7 +408,7 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
                 <label className="border-2 border-dashed border-stone-400 hover:border-[#18181B] rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-stone-50 hover:bg-amber-50/50 transition-colors text-center">
                   <Upload className="w-6 h-6 text-stone-400" />
                   <span className="text-xs font-bold text-stone-700">คลิกเพื่ออัปโหลดรูปภาพหลักฐานการเข้าร่วม</span>
-                  <span className="text-[10px] text-stone-400 font-medium">รองรับไฟล์ JPG, PNG</span>
+                  <span className="text-[10px] text-stone-400 font-medium">รองรับ JPG, PNG, WebP, HEIC ไม่เกิน 5 MB</span>
                   <input 
                     type="file" 
                     accept="image/*" 

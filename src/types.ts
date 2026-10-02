@@ -136,6 +136,7 @@ export interface Reflection {
   step2ApprovedAt?: string;
   rejectionReason?: string;
   evidenceUrl?: string;
+  evidencePath?: string;
   staffReviewedAt?: string;
   staffReviewerName?: string;
   execApprovedAt?: string;

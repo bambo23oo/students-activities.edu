@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../db/db';
 import { CheckInLog, Student, Activity, Reflection } from '../../types';
+import { getEvidenceUrl, reviewReflection } from '../../services/reflectionRepository';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -41,6 +42,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [activeDetailSubmission, setActiveDetailSubmission] = useState<EnrichedSubmission | null>(null);
+  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -53,6 +55,12 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
     window.addEventListener('db_updated', handleSync);
     return () => window.removeEventListener('db_updated', handleSync);
   }, []);
+
+  useEffect(() => {
+    const ref = activeDetailSubmission?.reflection;
+    setEvidencePreviewUrl(ref?.evidenceUrl || '');
+    if (ref?.evidencePath) getEvidenceUrl(ref.evidencePath).then(setEvidencePreviewUrl).catch(() => setEvidencePreviewUrl(''));
+  }, [activeDetailSubmission]);
 
   const loadPendingSubmissions = async () => {
     setIsLoading(true);
@@ -110,17 +118,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
       const now = new Date().toISOString();
 
       // 1. Update reflection status to pending_step2 (sent to Assistant Dean)
-      await db.reflections.update(submission.reflection.id, {
-        status: 'pending_step2',
-        step1ApprovedAt: now,
-        step1ApprovedBy: staffName
-      });
-
-      // 2. Update checkInLog staffStatus to verified
-      await db.checkInLogs.update(submission.log.id, {
-        staffStatus: 'verified',
-        verifiedBy: staffName
-      });
+      await reviewReflection(submission.reflection, submission.log.id, 'pending_step2');
 
       // 3. Notify system
       try {
@@ -148,17 +146,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
 
     try {
       const now = new Date().toISOString();
-      await Promise.all(targets.map(async (s) => {
-        await db.reflections.update(s.reflection.id, {
-          status: 'pending_step2',
-          step1ApprovedAt: now,
-          step1ApprovedBy: staffName
-        });
-        await db.checkInLogs.update(s.log.id, {
-          staffStatus: 'verified',
-          verifiedBy: staffName
-        });
-      }));
+      for (const s of targets) await reviewReflection(s.reflection, s.log.id, 'pending_step2');
 
       try {
         const bc = new BroadcastChannel('npu_db_sync');
@@ -180,14 +168,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
     if (reason === null) return;
 
     try {
-      await db.reflections.update(submission.reflection.id, {
-        status: 'rejected',
-        rejectionReason: reason || 'ขอให้แก้ไขบันทึกผลการเรียนรู้ K-P-A เพิ่มเติม'
-      });
-
-      await db.checkInLogs.update(submission.log.id, {
-        staffStatus: 'rejected'
-      });
+      await reviewReflection(submission.reflection, submission.log.id, 'rejected', reason || 'ขอให้แก้ไขบันทึกผลการเรียนรู้ K-P-A เพิ่มเติม');
 
       try {
         const bc = new BroadcastChannel('npu_db_sync');
@@ -359,7 +340,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-stone-500 font-medium mt-1">
                         <span>ส่งเมื่อ: {submittedDate} น.</span>
                         <span className="text-blue-700 font-bold">+3 ชม. กิจกรรม</span>
-                        {item.reflection.evidenceUrl && (
+                        {(item.reflection.evidenceUrl || item.reflection.evidencePath) && (
                           <span className="text-emerald-700 font-bold flex items-center gap-1">
                             <ImageIcon className="w-3 h-3" /> มีรูปภาพหลักฐาน
                           </span>
@@ -463,7 +444,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
               </div>
 
               {/* Evidence Photo */}
-              {activeDetailSubmission.reflection.evidenceUrl && (
+              {evidencePreviewUrl && (
                 <div className="bg-white p-4 border-2 border-[#18181B] rounded-xl space-y-2">
                   <div className="font-black text-[#18181B] flex items-center gap-1.5 text-xs uppercase">
                     <ImageIcon className="w-4 h-4 text-emerald-600" />
@@ -471,7 +452,7 @@ export const StaffReviewTab: React.FC<StaffReviewTabProps> = ({
                   </div>
                   <div className="border-2 border-stone-200 rounded-lg overflow-hidden max-h-60 bg-stone-100 flex items-center justify-center">
                     <img 
-                      src={activeDetailSubmission.reflection.evidenceUrl} 
+                      src={evidencePreviewUrl}
                       alt="Proof" 
                       className="max-h-60 w-auto object-contain"
                     />

@@ -112,6 +112,7 @@ export const pullFromSupabase = async () => {
         knowledge: r.k_knowledge || '',
         practice: r.p_skill || '',
         attitude: r.a_attitude || '',
+        evidencePath: r.evidence_path || undefined,
         status: r.status || 'pending_step1',
         submittedAt: r.submitted_at || new Date().toISOString()
       })));
@@ -341,6 +342,20 @@ export const setupRealtimeSync = (onUpdate?: () => void) => {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, async (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
         await db.activities.put(mapCloudActivity(payload.new));
+      }
+      triggerDebouncedDbUpdate(onUpdate);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reflections' }, async (payload) => {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const row = payload.new as any;
+        await db.reflections.put({
+          id: row.id, logId: row.log_id || undefined, studentId: row.student_id,
+          activityId: row.activity_id, knowledge: row.k_knowledge || '',
+          practice: row.p_skill || '', attitude: row.a_attitude || '',
+          evidencePath: row.evidence_path || undefined,
+          status: row.status || 'pending_step1', submittedAt: row.submitted_at || undefined,
+          rejectionReason: row.reject_reason || undefined
+        });
       }
       triggerDebouncedDbUpdate(onUpdate);
     })
