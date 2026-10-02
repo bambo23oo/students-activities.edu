@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="favGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="favFlame" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#DC2626" />
+      <stop offset="100%" stop-color="#EA580C" />
+    </linearGradient>
+    <linearGradient id="favLotus" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C2410C" />
+      <stop offset="100%" stop-color="#4A1E07" />
+    </linearGradient>
+    <linearGradient id="favWater" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+  </defs>
+
+  <!-- Circular background badge for clean contrast on dark/light tabs -->
+  <circle cx="64" cy="64" r="62" fill="#FFFFFF" stroke="#D97706" stroke-width="2.5" />
+
+  <!-- Outer Emblem Arch (ซุ้มบัวตูม) -->
+  <path 
+    d="M64 12 C74 26 104 55 104 84 C104 100 88 112 64 112 C40 112 24 100 24 84 C24 55 54 26 64 12 Z" 
+    fill="#FFFDF7" 
+    stroke="#5C2A0D" 
+    stroke-width="2.5" 
+  />
+  <path 
+    d="M64 17 C72 29 98 57 98 83 C98 96 84 107 64 107 C44 107 30 96 30 83 C30 57 56 29 64 17 Z" 
+    fill="none" 
+    stroke="#EA580C" 
+    stroke-width="1.2" 
+  />
+
+  <!-- Golden Rice Wreath Accents (รวงข้าวสีทอง) -->
+  <g fill="url(#favGold)">
+    <circle cx="39" cy="46" r="3.2" />
+    <circle cx="35" cy="58" r="3.4" />
+    <circle cx="33" cy="71" r="3.6" />
+    <circle cx="34" cy="84" r="3.6" />
+    <circle cx="38" cy="95" r="3.4" />
+
+    <circle cx="89" cy="46" r="3.2" />
+    <circle cx="93" cy="58" r="3.4" />
+    <circle cx="95" cy="71" r="3.6" />
+    <circle cx="94" cy="84" r="3.6" />
+    <circle cx="90" cy="95" r="3.4" />
+  </g>
+
+  <!-- Pagoda Aura Arches -->
+  <path d="M51 86 C50 62 57 44 64 34 C71 44 78 62 77 86" stroke="#C2410C" stroke-width="1.5" fill="none" />
+
+  <!-- Sacred Flame Spire (ยอดพระธาตุพนม) -->
+  <path d="M64 14 C66 18 67 22 64 25 C61 22 62 18 64 14 Z" fill="url(#favFlame)" />
+  <circle cx="64" cy="27" r="1.8" fill="#D84315" />
+  <circle cx="64" cy="30" r="2.2" fill="#D84315" />
+  <circle cx="64" cy="33" r="2.6" fill="#D84315" />
+
+  <!-- Stupa Body (พระธาตุพนม) -->
+  <path d="M61 34 L67 34 L71 85 L57 85 Z" fill="#FFFFFF" stroke="#C2410C" stroke-width="2" />
+  <!-- Stupa Tree Pattern -->
+  <path d="M64 40 L64 78" stroke="#D84315" stroke-width="1.2" />
+  <circle cx="64" cy="48" r="2.2" fill="#D84315" />
+  <circle cx="64" cy="58" r="2.6" fill="#D84315" />
+  <circle cx="64" cy="68" r="3" fill="#D84315" />
+
+  <!-- Lotus Pedestal Base (ฐานบัว) -->
+  <path d="M64 78 C70 82 74 90 71 97 C64 95 64 95 57 97 C54 90 58 82 64 78 Z" fill="url(#favLotus)" stroke="#4A1E07" stroke-width="1" />
+  <path d="M56 88 C49 88 43 95 47 101 C54 101 58 98 60 94 Z" fill="url(#favLotus)" stroke="#4A1E07" stroke-width="0.8" />
+  <path d="M72 88 C79 88 85 95 81 101 C74 101 70 98 68 94 Z" fill="url(#favLotus)" stroke="#4A1E07" stroke-width="0.8" />
+
+  <!-- Mekong River Waves (คลื่นน้ำโขง) -->
+  <g stroke="url(#favWater)" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M46 103 C51 101 56 105 62 103 C68 101 73 105 78 103 C81 101 82 103 82 103" />
+    <path d="M44 108 C50 106 56 110 63 108 C70 106 76 110 82 108" />
+  </g>
+
+  <!-- Bottom Scroll (แพรแถบ) -->
+  <path d="M36 107 Q64 122 92 107 L89 116 Q64 127 39 116 Z" fill="#FFFFFF" stroke="#5C2A0D" stroke-width="1.8" />
+  <circle cx="34" cy="110" r="3" fill="#5C2A0D" />
+  <circle cx="94" cy="110" r="3" fill="#5C2A0D" />
+</svg>

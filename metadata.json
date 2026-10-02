@@ -1,0 +1,10 @@
+{
+  "name": "Remix Drive Student Activities Sync",
+  "description": "ระบบบันทึกกิจกรรมประสบการณ์วิชาชีพครู คณะครุศาสตร์ มหาวิทยาลัยนครพนม พร้อมฐานข้อมูล Supabase และจุดสแกนเนอร์",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
