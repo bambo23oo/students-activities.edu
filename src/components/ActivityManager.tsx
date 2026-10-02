@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, purgeSelfCreatedActivities } from '../db/db';
+import { db } from '../db/db';
 import { Activity } from '../types';
 import { REAL_FACULTY_ACTIVITIES } from '../data/realActivities';
+import { saveActivity, saveActivityStatus } from '../services/activityRepository';
 import * as XLSX from 'xlsx';
 import { 
   Plus, 
@@ -21,10 +22,18 @@ import {
   Check,
   X,
   QrCode,
-  Users
+  Users,
+  Pencil
 } from 'lucide-react';
-import { ConfirmModal } from './ConfirmModal';
 import { ActivityQrPosterModal } from './admin/ActivityQrPosterModal';
+
+const emptyActivityForm = {
+  id: '', name: '', date: '', endDate: '', startTime: '', endTime: '',
+  category: 'ประสบการณ์วิชาชีพ (ก่อนฝึก)', yearLevel: 'ปี 1 (รหัส 69)', cohort: '69',
+  hours: 3, points: 10, capacity: 150, assignedStaff: '', selfCheckInAllowed: false,
+  description: '', location: '', scheduleStatus: 'คงเดิม' as Activity['scheduleStatus'],
+  originalSchedule: '', newSchedule: '', duration: '', note: ''
+};
 
 export const ActivityManager: React.FC = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -38,31 +47,9 @@ export const ActivityManager: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [newActivity, setNewActivity] = useState({ 
-    id: '',
-    name: '', 
-    date: '', 
-    endDate: '', 
-    category: 'ประสบการณ์วิชาชีพ (ก่อนฝึก)',
-    yearLevel: 'ปี 1 (รหัส 69)',
-    cohort: '69',
-    hours: 3,
-    points: 10,
-    capacity: 150,
-    assignedStaff: '',
-    selfCheckInAllowed: true,
-    description: '', 
-    location: '',
-    scheduleStatus: 'คงเดิม' as 'คงเดิม' | 'เปลี่ยนวัน' | 'เปลี่ยนช่วงเวลา',
-    originalSchedule: '',
-    newSchedule: '',
-    duration: '',
-    note: ''
-  });
-
-  const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [newActivity, setNewActivity] = useState(emptyActivityForm);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   // Set of real faculty activity IDs
@@ -81,6 +68,8 @@ export const ActivityManager: React.FC = () => {
 
   useEffect(() => {
     loadActivities();
+    window.addEventListener('db_updated', loadActivities);
+    return () => window.removeEventListener('db_updated', loadActivities);
   }, []);
 
   useEffect(() => {
@@ -97,19 +86,21 @@ export const ActivityManager: React.FC = () => {
     e.preventDefault();
     if (!newActivity.name.trim()) return;
 
-    const genId = newActivity.id.trim() || `ACT_${Date.now()}`;
+    const genId = editingActivity?.id || newActivity.id.trim() || `ACT_${Date.now()}`;
     const staffList = newActivity.assignedStaff
       ? newActivity.assignedStaff.split(',').map(s => s.trim()).filter(Boolean)
       : [];
 
     const newAct: Activity = {
       id: genId,
-      name: newActivity.name,
-      date: newActivity.date || new Date().toISOString().split('T')[0],
+      name: newActivity.name.trim(),
+      date: newActivity.date,
       endDate: newActivity.endDate || undefined,
+      startTime: newActivity.startTime || undefined,
+      endTime: newActivity.endTime || undefined,
       description: newActivity.description || '',
       location: newActivity.location || 'คณะครุศาสตร์ มหาวิทยาลัยนครพนม',
-      status: 'active',
+      status: editingActivity?.status || 'completed',
       category: newActivity.category,
       yearLevel: newActivity.yearLevel,
       cohort: newActivity.cohort,
@@ -123,74 +114,51 @@ export const ActivityManager: React.FC = () => {
       newSchedule: newActivity.newSchedule,
       duration: newActivity.duration,
       note: newActivity.note,
-      isImported: false,
-      source: 'custom'
+      isImported: editingActivity?.isImported ?? false,
+      source: editingActivity?.source || 'custom'
     };
 
-    await db.activities.put(newAct);
-    setNewActivity({ 
-      id: '',
-      name: '', 
-      date: '', 
-      endDate: '', 
-      category: 'ประสบการณ์วิชาชีพ (ก่อนฝึก)',
-      yearLevel: 'ปี 1 (รหัส 69)',
-      cohort: '69',
-      hours: 3,
-      description: '', 
-      location: '',
-      scheduleStatus: 'คงเดิม',
-      originalSchedule: '',
-      newSchedule: '',
-      duration: '',
-      note: ''
-    });
-    setIsFormOpen(false);
-    window.dispatchEvent(new CustomEvent('db_updated'));
-    await loadActivities();
-    setNotification({
-      type: 'info',
-      message: `เพิ่มกิจกรรม "${newAct.name}" สำเร็จ (สร้างขึ้นเอง สามารถลบออกได้ตลอดเวลา)`
-    });
-  };
-
-  const handleDeleteActivity = async () => {
-    if (!activityToDelete) return;
-    await db.activities.delete(activityToDelete.id);
-    setActivityToDelete(null);
-    window.dispatchEvent(new CustomEvent('db_updated'));
-    await loadActivities();
-    setNotification({
-      type: 'success',
-      message: 'ลบกิจกรรมสำเร็จ'
-    });
+    setIsSaving(true);
+    try {
+      await saveActivity(newAct, Boolean(editingActivity));
+      setNewActivity(emptyActivityForm);
+      setEditingActivity(null);
+      setIsFormOpen(false);
+      await loadActivities();
+      setNotification({ type: 'success', message: `บันทึกกิจกรรม "${newAct.name}" ลงฐานข้อมูลกลางแล้ว` });
+    } catch (error) {
+      setNotification({ type: 'error', message: error instanceof Error ? error.message : 'บันทึกกิจกรรมไม่สำเร็จ' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleStatus = async (act: Activity) => {
     const newStatus = act.status === 'active' ? 'completed' : 'active';
-    await db.activities.update(act.id, { status: newStatus });
-    await loadActivities();
+    try {
+      await saveActivityStatus(act, newStatus);
+      await loadActivities();
+    } catch (error) {
+      setNotification({ type: 'error', message: error instanceof Error ? error.message : 'เปลี่ยนสถานะไม่สำเร็จ' });
+    }
   };
 
-  const handleRestoreRealActivities = async () => {
-    await db.activities.bulkPut(REAL_FACULTY_ACTIVITIES);
-    setShowResetConfirm(false);
-    window.dispatchEvent(new CustomEvent('db_updated'));
-    await loadActivities();
-    setNotification({
-      type: 'success',
-      message: 'ซิงค์และรีเซ็ตข้อมูลกิจกรรม 18 รายการของคณะครุศาสตร์เรียบร้อยแล้ว'
+  const openEditForm = (activity: Activity) => {
+    setEditingActivity(activity);
+    setNewActivity({
+      id: activity.id, name: activity.name, date: activity.date,
+      endDate: activity.endDate || '', startTime: activity.startTime || '', endTime: activity.endTime || '',
+      category: activity.category || '', yearLevel: activity.yearLevel || '', cohort: activity.cohort || '69',
+      hours: activity.hours ?? 0, points: activity.points ?? 0, capacity: activity.capacity ?? 0,
+      assignedStaff: activity.assignedStaffEmails?.join(', ') || '',
+      selfCheckInAllowed: activity.selfCheckInAllowed ?? false,
+      description: activity.description || '', location: activity.location || '',
+      scheduleStatus: activity.scheduleStatus || 'คงเดิม',
+      originalSchedule: activity.originalSchedule || '', newSchedule: activity.newSchedule || '',
+      duration: activity.duration || '', note: activity.note || ''
     });
-  };
-
-  const handlePurgeSelfCreatedActivities = async () => {
-    const result = await purgeSelfCreatedActivities();
-    setShowPurgeConfirm(false);
-    await loadActivities();
-    setNotification({
-      type: 'success',
-      message: `ลบกิจกรรมที่สร้างขึ้นเองเรียบร้อยแล้ว (${result.deletedCount} รายการ) เหลือเฉพาะที่นำเข้าทั้งหมด (${result.keptCount} รายการ)`
-    });
+    setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Excel / CSV File Import Handler
@@ -409,7 +377,10 @@ export const ActivityManager: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           {/* Add Activity Button */}
           <button
-            onClick={() => setIsFormOpen(!isFormOpen)}
+            onClick={() => {
+              if (isFormOpen) { setIsFormOpen(false); setEditingActivity(null); setNewActivity(emptyActivityForm); }
+              else { setEditingActivity(null); setNewActivity(emptyActivityForm); setIsFormOpen(true); }
+            }}
             className="px-4 py-2 text-xs font-bold bg-[#FACC15] hover:bg-amber-400 text-[#18181B] rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 transition-all"
           >
             <Plus className="w-4 h-4" />
@@ -418,40 +389,14 @@ export const ActivityManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Warning Banner if Custom Activities are detected */}
-      {customActivitiesCount > 0 && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[2px_2px_0px_0px_rgba(245,158,11,0.2)]">
-          <div className="flex items-start sm:items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
-            <div>
-              <p className="font-black text-amber-900 text-sm">
-                ตรวจพบกิจกรรมที่สร้างขึ้นเอง {customActivitiesCount} รายการในระบบ
-              </p>
-              <p className="text-amber-700 text-xs mt-0.5 font-medium">
-                ต้องการลบออกให้เหลือเฉพาะกิจกรรมที่นำเข้า (18 รายการของคณะครุศาสตร์ และไฟล์ที่นำเข้า) หรือไม่?
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowPurgeConfirm(true)}
-            className="px-4 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-black rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap self-start sm:self-center transition-all flex items-center gap-1.5"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>ลบกิจกรรมที่สร้างเองออกทันที ({customActivitiesCount})</span>
-          </button>
-        </div>
-      )}
-
       {/* Add New Activity Collapsible Form */}
       {isFormOpen && (
         <div className="bg-white p-6 rounded-2xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-black text-[#18181B] flex items-center gap-2">
-              <Plus className="w-5 h-5 text-[#EA580C]" /> เพิ่มกิจกรรมการเรียนรู้ / ฝึกประสบการณ์
+              {editingActivity ? <Pencil className="w-5 h-5 text-[#EA580C]" /> : <Plus className="w-5 h-5 text-[#EA580C]" />}
+              {editingActivity ? `แก้ไขกิจกรรม ${editingActivity.id}` : 'เพิ่มกิจกรรมการเรียนรู้ / ฝึกประสบการณ์'}
             </h3>
-            <span className="text-[11px] px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-bold">
-              กิจกรรมที่สร้างด้วยฟอร์มนี้จะถูกจัดเป็น "สร้างขึ้นเอง" (สามารถลบออกได้)
-            </span>
           </div>
 
           <form onSubmit={handleAddActivity} className="space-y-4 text-xs">
@@ -462,6 +407,7 @@ export const ActivityManager: React.FC = () => {
                   type="text" 
                   value={newActivity.id}
                   onChange={(e) => setNewActivity({...newActivity, id: e.target.value})}
+                  disabled={!!editingActivity}
                   className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold"
                   placeholder="เช่น ACT-01"
                 />
@@ -478,7 +424,7 @@ export const ActivityManager: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block font-bold text-stone-700 mb-1">จำนวนกิจกรรมสะสม (ครั้ง/กิจกรรม)</label>
+                <label className="block font-bold text-stone-700 mb-1">ชั่วโมงกิจกรรม</label>
                 <input 
                   type="number" 
                   value={newActivity.hours}
@@ -564,6 +510,18 @@ export const ActivityManager: React.FC = () => {
                 />
               </div>
               <div>
+                <label className="block font-bold text-stone-700 mb-1">เวลาเริ่ม</label>
+                <input type="time" value={newActivity.startTime}
+                  onChange={(e) => setNewActivity({...newActivity, startTime: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">เวลาสิ้นสุด</label>
+                <input type="time" value={newActivity.endTime}
+                  onChange={(e) => setNewActivity({...newActivity, endTime: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+              <div>
                 <label className="block font-bold text-stone-700 mb-1">สถานที่จัด</label>
                 <input 
                   type="text" 
@@ -575,11 +533,38 @@ export const ActivityManager: React.FC = () => {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">รายละเอียดกิจกรรม</label>
+                <textarea rows={3} value={newActivity.description}
+                  onChange={(e) => setNewActivity({...newActivity, description: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">หมายเหตุ</label>
+                <textarea rows={3} value={newActivity.note}
+                  onChange={(e) => setNewActivity({...newActivity, note: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">ข้อความกำหนดการเดิม</label>
+                <input type="text" value={newActivity.originalSchedule}
+                  onChange={(e) => setNewActivity({...newActivity, originalSchedule: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">ข้อความกำหนดการใหม่</label>
+                <input type="text" value={newActivity.newSchedule}
+                  onChange={(e) => setNewActivity({...newActivity, newSchedule: e.target.value})}
+                  className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none focus:border-[#EA580C] font-semibold" />
+              </div>
+            </div>
+
             {/* Pre-Event Advanced Configuration: Capacity, Points & Staff Assignment */}
             <div className="p-3 bg-amber-50/70 border-2 border-amber-200 rounded-xl space-y-3">
               <div className="text-xs font-black text-amber-900 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-amber-700" />
-                <span>การตั้งค่าล่วงหน้า (Pre-Event Configuration & Staff Assignment)</span>
+                <span>ข้อมูลเพิ่มเติมของกิจกรรม</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -615,7 +600,7 @@ export const ActivityManager: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">
-                    กำหนดสิทธิ์เจ้าหน้าที่ (Staff Emails)
+                    ผู้ประสานงาน (อีเมล)
                   </label>
                   <input 
                     type="text"
@@ -624,7 +609,7 @@ export const ActivityManager: React.FC = () => {
                     className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-lg font-medium outline-none"
                     placeholder="เช่น staff1@npu.ac.th, staff2@npu.ac.th"
                   />
-                  <span className="text-[10px] text-stone-500">เว้นว่างไว้หากอนุญาตให้สตาฟฟ์ทุกคนสแกนได้</span>
+                  <span className="text-[10px] text-stone-500">ใช้เป็นข้อมูลติดต่อกิจกรรม</span>
                 </div>
               </div>
 
@@ -645,16 +630,17 @@ export const ActivityManager: React.FC = () => {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setIsFormOpen(false)}
+                onClick={() => { setIsFormOpen(false); setEditingActivity(null); setNewActivity(emptyActivityForm); }}
                 className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl"
               >
                 ยกเลิก
               </button>
               <button
                 type="submit"
+                disabled={isSaving}
                 className="px-4 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold rounded-xl shadow-sm"
               >
-                บันทึกกิจกรรม
+                {isSaving ? 'กำลังบันทึก...' : 'บันทึกกิจกรรม'}
               </button>
             </div>
           </form>
@@ -692,15 +678,6 @@ export const ActivityManager: React.FC = () => {
             ))}
           </div>
 
-          {customActivitiesCount > 0 && (
-            <button
-              onClick={() => setShowPurgeConfirm(true)}
-              className="text-xs text-rose-600 hover:text-rose-800 font-bold underline flex items-center gap-1"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>ลบรายการสร้างเอง ({customActivitiesCount}) ออกทั้งหมด</span>
-            </button>
-          )}
         </div>
 
         {/* Cohort Navigation Pills */}
@@ -827,7 +804,7 @@ export const ActivityManager: React.FC = () => {
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
                         isLive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
                       }`}>
-                        {isLive ? '● เปิดรับสแกน' : '○ ปิดการรับ'}
+                        {isLive ? '● เปิดบันทึก' : '○ ปิดบันทึก'}
                       </span>
                     </div>
 
@@ -862,7 +839,8 @@ export const ActivityManager: React.FC = () => {
                         <Clock className="w-3.5 h-3.5 text-[#F59E0B] shrink-0" />
                         <span>
                           {act.duration && <span>{act.duration} • </span>}
-                          <strong className="text-stone-900">{act.hours || 1} กิจกรรม</strong>
+                          {act.startTime && <span>{act.startTime}{act.endTime ? `–${act.endTime}` : ''} น. • </span>}
+                          <strong className="text-stone-900">{act.hours ?? 0} ชั่วโมง</strong>
                         </span>
                       </div>
 
@@ -894,6 +872,13 @@ export const ActivityManager: React.FC = () => {
                   {/* Right Column: Actions */}
                   <div className="flex items-center gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-stone-100">
                     <button
+                      onClick={() => openEditForm(act)}
+                      className="px-3 py-1.5 text-xs font-bold rounded-xl border border-[#18181B] bg-[#FACC15] hover:bg-amber-300 text-[#18181B] flex items-center gap-1.5"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      แก้ไข
+                    </button>
+                    <button
                       onClick={() => setSelectedActivityForPoster(act)}
                       className="px-2.5 py-1.5 text-xs font-bold rounded-xl transition-all border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 flex items-center gap-1.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                       title="พิมพ์ QR Code โปสเตอร์ติดหน้างานสำหรับเช็คอินตนเอง"
@@ -911,16 +896,9 @@ export const ActivityManager: React.FC = () => {
                       }`}
                     >
                       <Power className="w-3.5 h-3.5" />
-                      {isLive ? 'ปิดรับสแกน' : 'เปิดรับสแกน'}
+                      {isLive ? 'ปิดบันทึก' : 'เปิดบันทึก'}
                     </button>
 
-                    <button
-                      onClick={() => setActivityToDelete(act)}
-                      className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                      title={isImp ? "ลบกิจกรรม (รายการที่นำเข้า)" : "ลบกิจกรรม (สร้างขึ้นเอง)"}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
 
                 </div>
@@ -929,59 +907,6 @@ export const ActivityManager: React.FC = () => {
           })
         )}
       </div>
-
-      {/* Single Activity Delete Confirmation Modal */}
-      <ConfirmModal 
-        isOpen={!!activityToDelete}
-        title="ยืนยันการลบกิจกรรม"
-        message={
-          <span>
-            คุณแน่ใจหรือไม่ว่าต้องการลบกิจกรรม <strong>{activityToDelete?.name} ({activityToDelete?.id})</strong> ออกจากระบบ?
-          </span>
-        }
-        confirmText="ยืนยันการลบ"
-        cancelText="ยกเลิก"
-        onConfirm={handleDeleteActivity}
-        onCancel={() => setActivityToDelete(null)}
-        variant="danger"
-      />
-
-      {/* Purge All Self-Created Activities Modal */}
-      <ConfirmModal
-        isOpen={showPurgeConfirm}
-        title="ลบกิจกรรมที่สร้างขึ้นมาเองทั้งหมด"
-        message={
-          <div className="space-y-2">
-            <p>
-              ระบบจะทำการ <strong>ลบกิจกรรมที่สร้างขึ้นมาเองทั้งหมด ({customActivitiesCount} รายการ)</strong> ออกจากฐานข้อมูล
-            </p>
-            <p className="text-stone-600 text-xs">
-              กิจกรรมที่นำเข้า (ทั้ง 18 รายการของคณะครุศาสตร์ และรายการที่นำเข้าจากไฟล์ Excel/CSV) จะยังคงอยู่ครบถ้วน
-            </p>
-          </div>
-        }
-        confirmText={`ยืนยันลบ (${customActivitiesCount} รายการ)`}
-        cancelText="ยกเลิก"
-        onConfirm={handlePurgeSelfCreatedActivities}
-        onCancel={() => setShowPurgeConfirm(false)}
-        variant="danger"
-      />
-
-      {/* Reset Real Activities Modal */}
-      <ConfirmModal
-        isOpen={showResetConfirm}
-        title="รีเซ็ตและโหลดกิจกรรมจริง 18 รายการ"
-        message={
-          <span>
-            ระบบจะอัปเดตและเขียนทับรายการกิจกรรมทั้ง 18 รายการของคณะครุศาสตร์ มหาวิทยาลัยนครพนม (รหัส 69, 68, 67, 66) ให้เป็นไปตามแผนปฏิบัติการล่าสุด
-          </span>
-        }
-        confirmText="ยืนยันโหลด 18 รายการ"
-        cancelText="ยกเลิก"
-        onConfirm={handleRestoreRealActivities}
-        onCancel={() => setShowResetConfirm(false)}
-        variant="warning"
-      />
 
       {/* Printable Activity QR Self-Check-in Poster Modal */}
       <ActivityQrPosterModal

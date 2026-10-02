@@ -13,7 +13,6 @@ import {
   AlertCircle, 
   BookOpen,
   Send,
-  Sparkles,
   MapPin,
   GraduationCap,
   Edit3,
@@ -26,7 +25,6 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Activity, CheckInLog, Reflection, Student } from '../../types';
-import { db } from '../../db/db';
 
 interface StudentOverviewTabProps {
   logs: (CheckInLog & { activity?: Activity; reflection?: Reflection })[];
@@ -57,7 +55,6 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   const [pageSize, setPageSize] = useState(10);
   const [sortField, setSortField] = useState<'name' | 'date' | 'code' | 'status' | 'hours'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [isSimulating, setIsSimulating] = useState(false);
   const [selectedActivityDetail, setSelectedActivityDetail] = useState<Activity | null>(null);
 
   // Criteria: 18 Faculty of Education required activities
@@ -201,100 +198,6 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
     }
   };
 
-  // Simulates staff scanning this student's barcode at a station for the next activity
-  const handleSimulateScanNextActivity = async () => {
-    setIsSimulating(true);
-    try {
-      const attendedActIds = new Set(logs.map(l => l.activityId));
-      const nextAct = allActivities.find(a => !attendedActIds.has(a.id)) || allActivities[0];
-      if (!nextAct) return;
-
-      const actId = nextAct.id;
-      const deterministicId = `chk_${actId}_${studentId}`;
-      const newLog: CheckInLog = {
-        id: deterministicId,
-        studentId,
-        activityId: actId,
-        timestamp: new Date().toISOString(),
-        method: 'usb',
-        staffStatus: 'verified',
-        execStatus: 'pending',
-        status: 'checked_in',
-        scannerStation: 'ช่องที่ 1 (ประตูหลัก)',
-        syncStatus: 'pending'
-      };
-
-      await db.checkInLogs.put(newLog);
-
-      // Play audio chime
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(880, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.15);
-          gain.gain.setValueAtTime(0.3, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.3);
-        }
-      } catch (e) {}
-
-      window.dispatchEvent(new CustomEvent('db_updated', {
-        detail: {
-          studentId,
-          activityId: actId,
-          studentName: student?.name || studentName,
-          activityName: nextAct.name
-        }
-      }));
-    } catch (e) {
-      console.error('Error simulating scan:', e);
-    } finally {
-      setIsSimulating(false);
-    }
-  };
-
-  // Quick submit and approve K-P-A for an activity
-  const handleSimulateQuickApprove = async (logId: string) => {
-    try {
-      const targetLog = logs.find(l => l.id === logId);
-      if (!targetLog) return;
-
-      await db.checkInLogs.update(logId, {
-        staffStatus: 'verified',
-        execStatus: 'approved',
-        approvedBy: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด (ผู้ช่วยคณบดี)'
-      });
-
-      const refId = `ref_${logId}`;
-      await db.reflections.put({
-        id: refId,
-        logId: logId,
-        studentId,
-        activityId: targetLog.activityId,
-        knowledge: 'ได้เรียนรู้มาตรฐานความรู้และทักษะวิชาชีพครูตามมาตรฐานคุรุสภา',
-        practice: 'ฝึกปฏิบัติการจัดกิจกรรมการเรียนรู้แบบ Active Learning',
-        attitude: 'มีเจตคติที่ดีและจิตวิญญาณความเป็นครูมืออาชีพ',
-        status: 'approved',
-        submittedAt: new Date().toISOString(),
-        staffReviewedAt: new Date().toISOString(),
-        staffReviewerName: 'อาจารย์ผู้รับผิดชอบกิจกรรม',
-        execApprovedAt: new Date().toISOString(),
-        execApproverName: 'ผศ.ดร.ศรีสุดา ด้วงโต้ด (ผู้ช่วยคณบดี)'
-      });
-
-      window.dispatchEvent(new Event('db_updated'));
-    } catch (e) {
-      console.error('Error simulating quick approve:', e);
-    }
-  };
-
   // Export Table Data to CSV
   const handleExportCsv = () => {
     const headers = ['ลำดับ', 'รหัสกิจกรรม', 'ชื่อกิจกรรม', 'หมวดหมู่', 'วันเวลาจัดกิจกรรม', 'สถานที่', 'ชั่วโมงกิจกรรม', 'สถานะการเข้าร่วม', 'สถานะ KPA'].join(',');
@@ -341,13 +244,13 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
                 {student?.id || studentId}
               </span>
               <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] rounded-md">
-                ปี {student?.year || 4}
+                ปี {student?.year || '—'}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-stone-700 flex-wrap">
               <span className="font-black text-[#2563EB] flex items-center gap-1">
                 <GraduationCap className="w-3.5 h-3.5 shrink-0" />
-                <span>{student?.major || 'สาขาวิชาคอมพิวเตอร์ศึกษา'}</span>
+                <span>{student?.major || 'ไม่ระบุสาขาวิชา'}</span>
               </span>
               <span className="text-stone-400">•</span>
               <span className="font-semibold text-stone-600">{student?.faculty || 'คณะครุศาสตร์'}</span>
@@ -476,32 +379,6 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           </div>
 
         </div>
-      </div>
-
-      {/* Simulation Bar */}
-      <div className="bg-[#FAF7F0] border-2 border-[#18181B] p-3.5 sm:p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-[#FACC15] border-2 border-black flex items-center justify-center font-bold text-sm shrink-0 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-            ⚡
-          </div>
-          <div>
-            <div className="text-xs font-black text-[#18181B]">
-              เครื่องมือจำลอง: ทดลองสแกนบาร์โค้ด & อัปเดตกิจกรรมนักศึกษา
-            </div>
-            <div className="text-[11px] text-stone-600 font-medium">
-              คลิกเพื่อจำลองการที่เจ้าหน้าที่ยิงบาร์โค้ดเช็คอินกิจกรรมเพิ่มให้นักศึกษาคนนี้ทันที (กิจกรรมสะสมจะเพิ่มขึ้นทันที)
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSimulateScanNextActivity}
-          disabled={isSimulating}
-          className="px-4 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl text-xs font-bold border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-50"
-        >
-          <span>{isSimulating ? 'กำลังบันทึก...' : '▶️ จำลองยิงบาร์โค้ดเพิ่ม 1 กิจกรรม'}</span>
-        </button>
       </div>
 
       {/* 2. THREE METRIC CARDS ROW */}
@@ -993,14 +870,6 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
                               </button>
                             ) : (
                               <>
-                                <button
-                                  onClick={() => handleSimulateQuickApprove(row.log!.id)}
-                                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-sm transition-all flex items-center gap-1"
-                                  title="จำลองอาจารย์อนุมัติทันที"
-                                >
-                                  <Sparkles className="w-3 h-3 text-[#FACC15]" />
-                                  <span>อนุมัติ</span>
-                                </button>
                                 <button
                                   onClick={() => onOpenSubmitModal(row.log!.id)}
                                   className="px-2.5 py-1 bg-[#2563EB] hover:bg-blue-700 text-white rounded-lg text-xs font-black shadow-sm transition-all flex items-center gap-1"

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from 'html5-qrcode';
 import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase } from '../services/supabaseApi';
+import { saveActivityStatus } from '../services/activityRepository';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { MobileDeviceTesterModal } from './MobileDeviceTesterModal';
@@ -144,6 +145,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     const handleDbUpdate = () => {
       if (dbUpdateDebounceRef.current) clearTimeout(dbUpdateDebounceRef.current);
       dbUpdateDebounceRef.current = setTimeout(() => {
+        loadActivities();
         if (selectedActivityId) loadSessionLogs(selectedActivityId);
         getPendingSyncCount().then(setPendingSyncCount).catch(() => {});
       }, 120);
@@ -230,13 +232,12 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     if (!target) return;
 
     const newStatus = target.status === 'active' ? 'completed' : 'active';
-    await db.activities.update(actId, { status: newStatus });
-
-    setActivities(prev => prev.map(a => a.id === actId ? { ...a, status: newStatus } : a));
-
-    window.dispatchEvent(new CustomEvent('db_updated', {
-      detail: { activityId: actId, status: newStatus }
-    }));
+    try {
+      await saveActivityStatus(target, newStatus);
+      setActivities(prev => prev.map(a => a.id === actId ? { ...a, status: newStatus } : a));
+    } catch (error) {
+      setScanResult({ status: 'error', message: error instanceof Error ? error.message : 'เปลี่ยนสถานะกิจกรรมไม่สำเร็จ' });
+    }
   };
 
   // Web Audio API synthesizers for crisp, non-blocking feedback
@@ -616,6 +617,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     isProcessingRef.current = true;
 
     try {
+      const activeActivity = activities.find(a => a.id === selectedActivityId);
+      if (!activeActivity || activeActivity.status !== 'active') {
+        throw new Error('กิจกรรมนี้ปิดรับบันทึกอยู่ กรุณาเปิดบันทึกก่อนสแกน');
+      }
       // 1. Convert Thai keyboard encoding and extract clean student ID
       const { studentId, source, wasConvertedFromThai } = extractAndCleanStudentID(rawInput);
       const effectiveSource = method === 'manual' ? 'manual' : (method === 'camera' ? 'digital' : source);
@@ -741,17 +746,23 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       }
 
       // Confirm the central write before telling staff that a check-in succeeded.
-      const synced = await logCheckInToSupabase(newLog, student);
+      const syncResult = await logCheckInToSupabase(newLog, student);
+      if (syncResult === 'closed') {
+        await db.checkInLogs.delete(newLog.id);
+        throw new Error('กิจกรรมนี้ปิดบันทึกในฐานข้อมูลกลางแล้ว กรุณาเลือกกิจกรรมที่เปิดอยู่');
+      }
       getPendingSyncCount().then(setPendingSyncCount).catch(() => {});
-      triggerAudioAndHaptic(synced ? 'success' : 'warning');
-      triggerScreenFlash(synced ? 'success' : 'warning');
+      triggerAudioAndHaptic(syncResult === 'synced' ? 'success' : 'warning');
+      triggerScreenFlash(syncResult === 'synced' ? 'success' : 'warning');
 
       const scanTime = new Date().toLocaleTimeString('th-TH');
       setScanResult({ 
-        status: synced ? 'success' : 'warning',
-        message: synced
+        status: syncResult === 'synced' ? 'success' : 'warning',
+        message: syncResult === 'synced'
           ? `เช็คชื่อสำเร็จ: ${student.name}`
-          : `บันทึกในเครื่องแล้ว แต่ยังไม่ส่งถึงฐานข้อมูลกลาง: ${student.name}`,
+          : syncResult === 'duplicate'
+            ? `รหัสนี้เช็คชื่อในกิจกรรมนี้แล้ว: ${student.name}`
+            : `บันทึกในเครื่องแล้ว แต่ยังไม่ส่งถึงฐานข้อมูลกลาง: ${student.name}`,
         student,
         activityName: currentAct?.name || 'กิจกรรมประจำรอบ',
         time: scanTime,
@@ -1201,7 +1212,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             </button>
           )}
 
-          <div className="px-3 py-1.5 bg-[#FAF7F0] border-2 border-[#18181B] rounded-xl text-xs font-black text-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-2">
+          <div className="w-full sm:w-auto min-w-0 px-3 py-1.5 bg-[#FAF7F0] border-2 border-[#18181B] rounded-xl text-xs font-black text-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex flex-wrap items-center gap-2">
             <span>🏢 {scannerStation}</span>
             <span className="text-stone-300">|</span>
             <span>
@@ -1225,33 +1236,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <span>รอซิงก์ {pendingSyncCount}</span>
             </button>
           )}
-
-          <button
-            onClick={() => setShowStandeeModal(true)}
-            className="px-3 py-2 bg-white hover:bg-amber-50 text-amber-950 rounded-xl text-xs font-bold transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 min-h-[44px]"
-            title="แสดงป้าย Standee จุดลงทะเบียน Walk-in สำหรับผู้ที่ยังไม่มี Digital ID"
-          >
-            <span>🪧</span>
-            <span className="hidden sm:inline">ป้าย Standee Walk-in</span>
-          </button>
-
-          <button
-            onClick={() => { setMode('usb'); setTimeout(() => inputRef.current?.focus(), 0); }}
-            className="px-3 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-black transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 min-h-[44px]"
-            title="กรอกรหัสนักศึกษาจากรายชื่อที่ลงทะเบียนแล้ว"
-          >
-            <AlertCircle className="w-4 h-4 text-amber-950" />
-            <span>กรอกรหัสด้วยตนเอง</span>
-          </button>
-
-          <button
-            onClick={() => setShowMobileTester(true)}
-            className="px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 min-h-[44px]"
-            title="ทดสอบ UI/UX สำหรับโทรศัพท์มือถือทั้ง Android และ iOS"
-          >
-            <Smartphone className="w-4 h-4 text-white" />
-            <span className="hidden sm:inline">ทดสอบมือถือ</span>
-          </button>
 
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}

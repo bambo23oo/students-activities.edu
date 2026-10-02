@@ -328,6 +328,7 @@ const RAW_FACULTY_ACTIVITIES: Activity[] = [
 
 export const REAL_FACULTY_ACTIVITIES: Activity[] = RAW_FACULTY_ACTIVITIES.map(a => ({
   ...a,
+  status: 'completed',
   isImported: true,
   source: 'imported' as const
 }));

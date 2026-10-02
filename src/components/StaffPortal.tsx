@@ -13,13 +13,9 @@ import {
   FileCheck, 
   CalendarDays, 
   FileSpreadsheet, 
-  Database, 
-  Settings, 
-  Bell, 
+  Database,
   PanelLeftClose, 
   PanelLeft, 
-  Sparkles, 
-  ArrowRight, 
   ShieldCheck, 
   Award, 
   LogOut, 
@@ -27,9 +23,7 @@ import {
   ChevronDown,
   Menu,
   X,
-  Smartphone
 } from 'lucide-react';
-import { MobileDeviceTesterModal } from './MobileDeviceTesterModal';
 
 interface StaffPortalProps {
   onRoleChange?: (role: 'student' | 'staff' | 'approver', targetStudentId?: string) => void;
@@ -52,31 +46,29 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showWhatNewModal, setShowWhatNewModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [showMobileTester, setShowMobileTester] = useState(false);
 
   const getPageTitle = () => {
     switch (activeMenu) {
-      case 'dashboard': return 'Staff Dashboard (ภาพรวมเจ้าหน้าที่)';
-      case 'scanner': return 'สถานีสแกนเนอร์ความเร็วสูง (High-Speed Scanner)';
-      case 'reviews': return 'ตรวจอนุมัติบันทึก K-P-A ขั้นที่ 1 (Staff Review)';
-      case 'history': return 'ประวัติการสแกนเช็คอิน (Check-in Logs)';
-      case 'activities': return 'จัดการรายการกิจกรรม (Activity Management)';
-      case 'reports': return 'สรุปรายงานและทรานสคริปต์ (Reports)';
-      case 'database': return 'การตั้งค่าฐานข้อมูล Supabase (Database)';
-      default: return 'Staff Station';
+      case 'dashboard': return 'ภาพรวม';
+      case 'scanner': return 'สแกนเช็คอิน';
+      case 'reviews': return 'ตรวจผล K-P-A';
+      case 'history': return 'ประวัติเช็คอิน';
+      case 'activities': return 'จัดการกิจกรรม';
+      case 'reports': return 'รายงาน';
+      case 'database': return 'ฐานข้อมูล';
+      default: return 'งานเจ้าหน้าที่';
     }
   };
 
   const navItems = [
-    { id: 'scanner', label: 'สถานีสแกนเนอร์ (Scanner)', icon: QrCode, badge: 'LIVE' },
-    { id: 'reviews', label: 'ตรวจผล K-P-A (Step 6)', icon: FileCheck, badge: 'STEP 6' },
-    { id: 'dashboard', label: 'ภาพรวม (Dashboard)', icon: LayoutDashboard },
-    { id: 'history', label: 'ประวัติเช็คอิน (Logs)', icon: Users },
-    { id: 'activities', label: 'กิจกรรม (Activities)', icon: CalendarDays },
-    { id: 'reports', label: 'รายงาน (Reports)', icon: FileSpreadsheet },
-    { id: 'database', label: 'ฐานข้อมูล (Database)', icon: Database },
+    { id: 'scanner', label: 'สแกนเช็คอิน', icon: QrCode },
+    { id: 'reviews', label: 'ตรวจผล K-P-A', icon: FileCheck },
+    { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
+    { id: 'history', label: 'ประวัติเช็คอิน', icon: Users },
+    { id: 'activities', label: 'จัดการกิจกรรม', icon: CalendarDays },
+    { id: 'reports', label: 'รายงาน', icon: FileSpreadsheet },
+    ...(isUserAdmin ? [{ id: 'database', label: 'ฐานข้อมูล', icon: Database }] : []),
   ];
 
   return (
@@ -102,7 +94,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
               {!sidebarCollapsed && (
                 <div className="truncate leading-tight">
                   <div className="font-black text-white text-sm tracking-tight truncate">
-                    Staff Scanner
+                    สมุดบันทึกกิจกรรมดิจิทัล
                   </div>
                   <div className="text-[10px] text-stone-400 font-medium truncate">
                     คณะครุศาสตร์ ม.นครพนม
@@ -138,52 +130,10 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
                 >
                   <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#18181B]' : 'text-stone-400'}`} />
                   {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                  {item.badge && !sidebarCollapsed && (
-                    <span className={`ml-auto px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
-                      isActive ? 'bg-[#18181B] text-[#FACC15]' : 'bg-[#EF4444] text-white'
-                    }`}>
-                      {item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}
           </nav>
-
-          {/* Bottom Card: Fast Tips */}
-          {!sidebarCollapsed && (
-            <div className="p-3 mx-3 mb-3 bg-[#FAF7F0] text-[#18181B] border-2 border-[#18181B] rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] space-y-2">
-              <div className="flex items-center gap-1.5 font-black text-xs text-[#18181B]">
-                <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
-                <span>คำแนะนำสแกนเนอร์</span>
-              </div>
-              <p className="text-[11px] text-stone-600 leading-snug font-medium">
-                รองรับเครื่องยิง USB Barcode แบบ Plug & Play และแปลงภาษาไทยอัตโนมัติ
-              </p>
-              <button 
-                onClick={() => setShowWhatNewModal(true)}
-                className="w-full py-1.5 px-2 bg-white hover:bg-stone-100 text-[#18181B] rounded-lg text-[10px] font-bold border-2 border-[#18181B] transition-all flex items-center justify-center gap-1 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-              >
-                <span>ดูรายละเอียด</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-
-          {/* Bottom Settings Link */}
-          <div className="p-3 border-t border-stone-800">
-            <button 
-              onClick={() => setActiveMenu('database')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                activeMenu === 'database'
-                  ? 'bg-[#FACC15] text-[#18181B] font-bold border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                  : 'text-stone-300 hover:text-white hover:bg-stone-800/80'
-              }`}
-            >
-              <Settings className="w-4 h-4 shrink-0 text-stone-400" />
-              {!sidebarCollapsed && <span>ตั้งค่าระบบ (Settings)</span>}
-            </button>
-          </div>
 
         </div>
       </aside>
@@ -198,7 +148,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
                   <div className="w-8 h-8 rounded-lg bg-[#FACC15] text-[#18181B] flex items-center justify-center font-black text-sm border border-[#18181B]">
                     📷
                   </div>
-                  <span className="font-bold text-sm">Staff Scanner</span>
+                  <span className="font-bold text-sm">งานเจ้าหน้าที่</span>
                 </div>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-1 text-stone-400">
                   <X className="w-5 h-5" />
@@ -249,7 +199,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
         <header className="h-16 bg-[#F4EFE6] border-b-2 border-[#18181B] px-4 sm:px-6 flex items-center justify-between shrink-0 z-20">
           
           {/* Page Title & Mobile Toggle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="min-w-11 min-h-11 flex items-center justify-center rounded-xl bg-white text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-100 md:hidden"
@@ -262,27 +212,8 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
           </div>
 
           {/* Right Controls: Search, Notification Bell, User Profile */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             
-            {/* Mobile Device UI/UX Tester Button */}
-            <button
-              onClick={() => setShowMobileTester(true)}
-              className="min-h-11 flex items-center gap-1.5 bg-[#EA580C] hover:bg-[#C2410C] text-white border-2 border-[#18181B] px-4 py-2 text-xs font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0"
-              title="ทดสอบ UI/UX สำหรับโทรศัพท์มือถือทั้ง Android และ iOS"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-white" />
-              <span className="hidden sm:inline">ทดสอบมือถือ</span>
-            </button>
-
-            {/* Notification Bell */}
-            <button 
-              className="w-11 h-11 rounded-xl bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-50 text-[#18181B] flex items-center justify-center transition-all relative"
-              title="แจ้งเตือน"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#EF4444] border-2 border-[#18181B]" />
-            </button>
-
             {/* User Profile Avatar with dropdown */}
             <div className="relative">
               <button 
@@ -381,60 +312,10 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
           {activeMenu === 'history' && <CheckInHistory />}
           {activeMenu === 'activities' && <ActivityManager />}
           {activeMenu === 'reports' && <ReportsView />}
-          {activeMenu === 'database' && <SupabaseSettings />}
+          {activeMenu === 'database' && isUserAdmin && <SupabaseSettings />}
         </main>
 
       </div>
-
-      {/* What's New Detail Modal */}
-      {showWhatNewModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full border-2 border-[#18181B] shadow-[6px_6px_0px_0px_rgba(24,24,27,1)] space-y-4 animate-in zoom-in-95">
-            <div className="w-12 h-12 rounded-xl bg-[#FACC15] border-2 border-[#18181B] flex items-center justify-center text-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            
-            <div>
-              <h3 className="text-base font-black text-[#18181B]">ฟีเจอร์ใหม่สำหรับเจ้าหน้าที่สแกนเนอร์</h3>
-              <p className="text-xs text-stone-600 font-medium mt-0.5">
-                ระบบสแกนความเร็วสูง คณะครุศาสตร์ มหาวิทยาลัยนครพนม
-              </p>
-            </div>
-
-            <ul className="space-y-2 text-xs text-stone-700 font-medium">
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-700 font-bold">✓</span>
-                <span>รองรับเครื่องยิงบาร์โค้ด USB ทั้งบาร์โค้ดบัตรจริงและ QR Code ดิจิทัล</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-700 font-bold">✓</span>
-                <span>ระบบแปลงภาษาไทยกลับเป็นรหัสนักศึกษาอัตโนมัติเมื่อลืมสลับแป้นพิมพ์</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-700 font-bold">✓</span>
-                <span>เสียงแจ้งเตือน Beep ยืนยันผลการสแกนทันทีโดยไม่ต้องเหลือบมองจอ</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-emerald-700 font-bold">✓</span>
-                <span>ซิงค์ขึ้น Supabase Cloud Real-time ใช้งานพร้อมกันได้หลายจุดสแกน</span>
-              </li>
-            </ul>
-
-            <button
-              onClick={() => setShowWhatNewModal(false)}
-              className="w-full py-2.5 bg-[#18181B] hover:bg-stone-800 text-[#FACC15] rounded-xl text-xs font-bold border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-            >
-              รับทราบ
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile Device Tester Modal */}
-      <MobileDeviceTesterModal
-        isOpen={showMobileTester}
-        onClose={() => setShowMobileTester(false)}
-      />
 
     </div>
   );

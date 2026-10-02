@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { CheckInLog, Student, Activity, Reflection } from '../types';
+import { CheckInLog, Student, Activity } from '../types';
 import { db } from '../db/db';
 
 /**
@@ -27,6 +27,33 @@ export const formatSupabaseError = (err: any): string => {
   }
   return msg || code;
 };
+
+const mapCloudActivity = (a: any): Activity => ({
+  id: a.id,
+  name: a.name,
+  date: a.date,
+  endDate: a.end_date || undefined,
+  startTime: a.start_time || undefined,
+  endTime: a.end_time || undefined,
+  location: a.location || '',
+  description: a.description || '',
+  status: a.status || 'active',
+  hours: a.hours ?? 0,
+  category: a.category || undefined,
+  yearLevel: a.year_level || undefined,
+  cohort: a.cohort || undefined,
+  points: a.points ?? undefined,
+  capacity: a.capacity ?? undefined,
+  assignedStaffEmails: a.assigned_staff_emails || undefined,
+  selfCheckInAllowed: a.self_check_in_allowed ?? false,
+  scheduleStatus: a.schedule_status || undefined,
+  originalSchedule: a.original_schedule || undefined,
+  newSchedule: a.new_schedule || undefined,
+  duration: a.duration || undefined,
+  note: a.note || undefined,
+  isImported: a.is_imported ?? true,
+  source: a.source || 'imported'
+});
 
 export const pullFromSupabase = async () => {
   const supabase = getSupabaseClient();
@@ -62,21 +89,7 @@ export const pullFromSupabase = async () => {
     }
 
     if (activities && activities.length > 0) {
-      await db.activities.bulkPut(activities.map(a => ({
-        id: a.id,
-        name: a.name,
-        date: a.date,
-        endDate: a.end_date || a.date,
-        location: a.location || '',
-        description: a.description || '',
-        status: a.status || 'active',
-        hours: a.hours || 3,
-        category: a.category,
-        yearLevel: a.year_level,
-        cohort: a.cohort,
-        isImported: true,
-        source: 'imported' as const
-      })));
+      await db.activities.bulkPut(activities.map(mapCloudActivity));
     }
 
     if (logs && logs.length > 0) {
@@ -107,40 +120,33 @@ export const pullFromSupabase = async () => {
   window.dispatchEvent(new Event('db_updated'));
 };
 
-export const logCheckInToSupabase = async (log: CheckInLog, student: Student): Promise<boolean> => {
+export const logCheckInToSupabase = async (log: CheckInLog, student: Student): Promise<'synced' | 'duplicate' | 'closed' | 'pending'> => {
   const supabase = getSupabaseClient();
   if (!supabase) {
     // Supabase not configured: mark as pending or local-only
     await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
-    return false;
+    return 'pending';
   }
 
   try {
-    // 0. Ensure Activity exists in Supabase so foreign key won't fail
-    if (log.activityId) {
-      const localActivity = await db.activities.get(log.activityId);
-      if (localActivity) {
-        await supabase.from('activities').upsert({
-          id: localActivity.id,
-          name: localActivity.name,
-          date: localActivity.date,
-          end_date: localActivity.endDate || localActivity.date,
-          location: localActivity.location || null,
-          description: localActivity.description || null,
-          status: localActivity.status || 'active'
-        }, { onConflict: 'id' });
-      }
+    // Scanner clients must never overwrite a centrally edited activity.
+    const { data: registeredActivity, error: activityError } = await supabase
+      .from('activities').select('id, status').eq('id', log.activityId).maybeSingle();
+    if (activityError) {
+      await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
+      return 'pending';
     }
+    if (!registeredActivity || registeredActivity.status !== 'active') return 'closed';
 
     // The roster is authoritative. A scan must never create or overwrite it.
     const { data: registeredStudent, error: studentError } = await supabase
       .from('students').select('id').eq('id', student.id).maybeSingle();
     if (studentError || !registeredStudent || student.id !== log.studentId) {
       await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
-      return false;
+      return 'pending';
     }
 
-    // 2. Insert or upsert check-in log (Idempotent by log.id)
+    // Insert once. A retry or another scanner must not overwrite the first check-in.
     const logPayload: any = {
       id: log.id,
       student_id: log.studentId,
@@ -159,28 +165,46 @@ export const logCheckInToSupabase = async (log: CheckInLog, student: Student): P
 
     let { error: logError } = await supabase
       .from('check_in_logs')
-      .upsert(logPayload, { onConflict: 'id' });
+      .insert(logPayload);
 
     // Fallback if older Supabase schema doesn't have scanner_station column yet
     if (logError && (logError.code === '42703' || logError.message?.includes('scanner_station'))) {
       delete logPayload.scanner_station;
-      const retry = await supabase.from('check_in_logs').upsert(logPayload, { onConflict: 'id' });
+      const retry = await supabase.from('check_in_logs').insert(logPayload);
       logError = retry.error;
+    }
+
+    if (logError?.code === '23505') {
+      const { data: original } = await supabase.from('check_in_logs')
+        .select('id, student_id, activity_id, timestamp, method, staff_status, exec_status, scanner_station')
+        .eq('student_id', log.studentId).eq('activity_id', log.activityId).maybeSingle();
+      if (original) {
+        await db.checkInLogs.delete(log.id);
+        await db.checkInLogs.put({
+          id: original.id, studentId: original.student_id, activityId: original.activity_id,
+          timestamp: original.timestamp, method: original.method || 'camera',
+          staffStatus: original.staff_status || 'verified', execStatus: original.exec_status || 'pending',
+          scannerStation: original.scanner_station || undefined, syncStatus: 'synced'
+        });
+      } else {
+        await db.checkInLogs.update(log.id, { syncStatus: 'synced' }).catch(() => {});
+      }
+      return 'duplicate';
     }
 
     if (logError) {
       console.warn('Supabase: Warning inserting log:', formatSupabaseError(logError));
       await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
-      return false;
+      return 'pending';
     } else {
       console.log('Supabase: Check-in log synced successfully');
       await db.checkInLogs.update(log.id, { syncStatus: 'synced' }).catch(() => {});
-      return true;
+      return 'synced';
     }
   } catch (err: any) {
     console.error('Supabase: Sync error in logCheckInToSupabase:', err);
     await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
-    return false;
+    return 'pending';
   }
 };
 
@@ -311,6 +335,12 @@ export const setupRealtimeSync = (onUpdate?: () => void) => {
           major: row.major || undefined,
           year: row.year || undefined
         });
+      }
+      triggerDebouncedDbUpdate(onUpdate);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, async (payload) => {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        await db.activities.put(mapCloudActivity(payload.new));
       }
       triggerDebouncedDbUpdate(onUpdate);
     })

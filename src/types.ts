@@ -27,6 +27,8 @@ export interface Activity {
   name: string;
   date: string;
   endDate?: string;
+  startTime?: string;
+  endTime?: string;
   description: string;
   location: string;
   status: 'active' | 'completed' | 'upcoming';
