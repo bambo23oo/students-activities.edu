@@ -106,12 +106,12 @@ export const pullFromSupabase = async () => {
   });
 };
 
-export const logCheckInToSupabase = async (log: CheckInLog, student: Student) => {
+export const logCheckInToSupabase = async (log: CheckInLog, student: Student): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) {
     // Supabase not configured: mark as pending or local-only
     await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
-    return;
+    return false;
   }
 
   try {
@@ -145,6 +145,8 @@ export const logCheckInToSupabase = async (log: CheckInLog, student: Student) =>
 
     if (studentError) {
       console.warn('Supabase: Warning upserting student:', formatSupabaseError(studentError));
+      await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
+      return false;
     }
 
     // 2. Insert or upsert check-in log (Idempotent by log.id)
@@ -178,13 +180,16 @@ export const logCheckInToSupabase = async (log: CheckInLog, student: Student) =>
     if (logError) {
       console.warn('Supabase: Warning inserting log:', formatSupabaseError(logError));
       await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
+      return false;
     } else {
       console.log('Supabase: Check-in log synced successfully');
       await db.checkInLogs.update(log.id, { syncStatus: 'synced' }).catch(() => {});
+      return true;
     }
   } catch (err: any) {
     console.error('Supabase: Sync error in logCheckInToSupabase:', err);
     await db.checkInLogs.update(log.id, { syncStatus: 'pending' }).catch(() => {});
+    return false;
   }
 };
 

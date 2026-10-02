@@ -1,7 +1,7 @@
 import { setupRealtimeSync } from './services/supabaseApi';
 import React, { useState, useEffect } from 'react';
 import { AuthState, UserRole, isAdminEmail, getAdminAccount } from './types';
-import { initializeMockData, ensureAdminData, clearAllAndKeepRealActivitiesOnly, db } from './db/db';
+import { initializeMockData, db } from './db/db';
 import { 
   WifiOff, 
   LogOut, 
@@ -55,16 +55,8 @@ export default function App() {
     window.addEventListener('offline', handleOffline);
     try { setupRealtimeSync(); } catch(e) {}
 
-    // Initialize DB: Clear mock/sample data and keep strictly real faculty projects and official students
-    if (localStorage.getItem('npu_real_clean_v4') !== 'true') {
-      clearAllAndKeepRealActivitiesOnly()
-        .then(() => {
-          localStorage.setItem('npu_real_clean_v4', 'true');
-        })
-        .catch(console.error);
-    } else {
-      initializeMockData().then(() => ensureAdminData()).catch(console.error);
-    }
+    // Never erase check-ins or reflections as a side effect of opening the app.
+    initializeMockData().catch(console.error);
     
     // Check local storage for session
     const savedRole = localStorage.getItem('app_role') as UserRole;

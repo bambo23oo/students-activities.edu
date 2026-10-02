@@ -15,7 +15,6 @@ import {
   FileSpreadsheet, 
   Database, 
   Settings, 
-  Search, 
   Bell, 
   PanelLeftClose, 
   PanelLeft, 
@@ -53,7 +52,6 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showWhatNewModal, setShowWhatNewModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showMobileTester, setShowMobileTester] = useState(false);
@@ -254,7 +252,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="p-1.5 rounded-xl bg-white text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-100 md:hidden"
+              className="min-w-11 min-h-11 flex items-center justify-center rounded-xl bg-white text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-100 md:hidden"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -266,22 +264,10 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
           {/* Right Controls: Search, Notification Bell, User Profile */}
           <div className="flex items-center gap-3">
             
-            {/* Search Box */}
-            <div className="relative hidden lg:block w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ค้นหากิจกรรม, นักศึกษา..."
-                className="w-full pl-8 pr-3 py-1.5 bg-white border-2 border-[#18181B] rounded-xl text-xs text-[#18181B] outline-none shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] placeholder:text-stone-400 font-medium"
-              />
-            </div>
-
             {/* Mobile Device UI/UX Tester Button */}
             <button
               onClick={() => setShowMobileTester(true)}
-              className="flex items-center gap-1.5 bg-[#EA580C] hover:bg-[#C2410C] text-white border-2 border-[#18181B] px-2.5 py-1.5 text-xs font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0"
+              className="min-h-11 flex items-center gap-1.5 bg-[#EA580C] hover:bg-[#C2410C] text-white border-2 border-[#18181B] px-4 py-2 text-xs font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0"
               title="ทดสอบ UI/UX สำหรับโทรศัพท์มือถือทั้ง Android และ iOS"
             >
               <Smartphone className="w-3.5 h-3.5 text-white" />
@@ -290,7 +276,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
 
             {/* Notification Bell */}
             <button 
-              className="w-9 h-9 rounded-xl bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-50 text-[#18181B] flex items-center justify-center transition-all relative"
+              className="w-11 h-11 rounded-xl bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-50 text-[#18181B] flex items-center justify-center transition-all relative"
               title="แจ้งเตือน"
             >
               <Bell className="w-4 h-4" />

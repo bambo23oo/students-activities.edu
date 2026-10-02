@@ -143,8 +143,8 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
         practice: practice.trim(),
         attitude: attitude.trim(),
         evidenceUrl: evidenceUrl || undefined,
-        status: submitStatus === 'pending_step1' ? 'pending_step1' : (reflection?.status || 'pending_step1'),
-        submittedAt: now
+        status: submitStatus,
+        submittedAt: submitStatus === 'pending_step1' ? now : reflection?.submittedAt
       };
 
       await db.reflections.put(updatedReflection);
@@ -173,8 +173,8 @@ export const StudentReflectionModal: React.FC<StudentReflectionModalProps> = ({
 
       setFeedbackMsg({
         text: submitStatus === 'pending_step1' 
-          ? 'ส่งบันทึกเรียบร้อยแล้ว! ข้อมูลถูกส่งไปยังเจ้าหน้าที่เพื่อตรวจอนุมัติขั้นที่ 1' 
-          : 'บันทึกร่างเรียบร้อยแล้ว',
+          ? 'บันทึกในเครื่องแล้ว แต่ยังไม่ยืนยันว่าข้อมูลถึงเจ้าหน้าที่'
+          : 'บันทึกร่างในเครื่องแล้ว',
         type: 'success'
       });
 

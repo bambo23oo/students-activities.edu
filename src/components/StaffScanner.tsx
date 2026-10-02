@@ -855,19 +855,18 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         console.log('Sync broadcast note:', e);
       }
 
-      // 6. Background Sync to Supabase
-      logCheckInToSupabase(newLog, student).then(() => {
-        getPendingSyncCount().then(setPendingSyncCount).catch(() => {});
-      });
-
-      // 7. Instant Feedback: Success (Flash green, crystal chime, toast)
-      triggerAudioAndHaptic('success');
-      triggerScreenFlash('success');
+      // Confirm the central write before telling staff that a check-in succeeded.
+      const synced = await logCheckInToSupabase(newLog, student);
+      getPendingSyncCount().then(setPendingSyncCount).catch(() => {});
+      triggerAudioAndHaptic(synced ? 'success' : 'warning');
+      triggerScreenFlash(synced ? 'success' : 'warning');
 
       const scanTime = new Date().toLocaleTimeString('th-TH');
       setScanResult({ 
-        status: 'success', 
-        message: `เช็คชื่อสำเร็จ: ${student.name}`,
+        status: synced ? 'success' : 'warning',
+        message: synced
+          ? `เช็คชื่อสำเร็จ: ${student.name}`
+          : `บันทึกในเครื่องแล้ว แต่ยังไม่ส่งถึงฐานข้อมูลกลาง: ${student.name}`,
         student,
         activityName: currentAct?.name || 'กิจกรรมประจำรอบ',
         time: scanTime,

@@ -251,7 +251,7 @@ export interface Reflection {
   knowledge?: string;
   practice?: string;
   attitude?: string;
-  status: 'pending_step1' | 'pending_step2' | 'approved' | 'rejected';
+  status: 'draft' | 'pending_step1' | 'pending_step2' | 'approved' | 'rejected';
   submittedAt?: string;
   step1ApprovedBy?: string;
   step1ApprovedAt?: string;

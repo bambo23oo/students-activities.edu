@@ -100,19 +100,15 @@ export const purgeSelfCreatedActivities = async (): Promise<{ deletedCount: numb
 };
 
 export const initializeMockData = async () => {
-  // Purge any self-created activities and ensure only the 18 imported faculty activities remain
-  await purgeSelfCreatedActivities();
-
   const studentsCount = await db.students.count();
-  if (studentsCount < INITIAL_NPU_STUDENTS.length) {
+  if (studentsCount === 0) {
     await db.students.bulkPut(INITIAL_NPU_STUDENTS);
   }
 
-  // Ensure only the 18 real faculty activities exist
-  await db.activities.bulkPut(REAL_FACULTY_ACTIVITIES);
-
-  // Always ensure Admin accounts exist in db
-  await ensureAdminData();
+  // Seed the local demo only on a new device. Existing records belong to the user.
+  if (await db.activities.count() === 0) {
+    await db.activities.bulkPut(REAL_FACULTY_ACTIVITIES);
+  }
 };
 
 /**

@@ -315,7 +315,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
                     : 'bg-slate-100 text-slate-500 border-slate-200'
                 }`}>
                   {healthStatus?.allTablesExist 
-                    ? '🟢 พร้อมใช้งานสมบูรณ์' 
+                    ? '🟡 พบตารางครบ (ยังต้องตรวจสิทธิ์)'
                     : isConnected 
                     ? '🟡 เชื่อมต่อแล้ว (ตรวจตาราง)' 
                     : '⚪ ยังไม่เชื่อมต่อ'}
@@ -534,10 +534,10 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
           <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-950 text-xs leading-relaxed space-y-1">
             <div className="font-bold flex items-center gap-2 text-sm text-emerald-800">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              โครงสร้างตารางครบถ้วนทั้ง 4 ตาราง พร้อมรับข้อมูลและซิงก์เรียบร้อยแล้ว
+              พบโครงสร้างตารางครบ 4 ตาราง
             </div>
             <p className="text-emerald-800">
-              ตาราง <code>students</code>, <code>activities</code>, <code>check_in_logs</code>, และ <code>reflections</code> พร้อมใช้งานสำหรับการสแกนเช็คอินแบบ Multi-Scanner และการประเมิน K-P-A สะท้อนคิดแล้ว
+              ยังต้องทดสอบสิทธิ์ผู้ใช้ การบันทึกข้อมูลและรูปภาพ รวมถึงการซิงก์ข้ามอุปกรณ์ก่อนเปิดใช้งานจริง
             </p>
           </div>
         )}
@@ -715,11 +715,11 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
                 ⚡
               </span>
               <h3 className="text-base font-black text-slate-900">
-                เครื่องมือทดสอบประสิทธิภาพ 400-500 คน & สแกนพร้อมกันหลายเครื่อง (Concurrency Benchmark)
+                จำลองการสแกนในเบราว์เซอร์ (ไม่ใช่การทดสอบ 450 ผู้ใช้จริง)
               </h3>
             </div>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              จำลองสถานการณ์จริงที่มีนักศึกษา 450 คนเช็คชื่อพร้อมกัน ผ่านเจ้าหน้าที่ 4 ช่องสแกน (Multi-Station) ตรวจสอบความเร็ว และการป้องกันข้อมูลซ้ำซ้อน 100%
+              เครื่องมือนี้ตรวจการทำงานในเครื่องเดียวเท่านั้น ผลที่ได้ใช้ยืนยันความจุของฐานข้อมูลหรือจำนวนผู้ใช้พร้อมกันไม่ได้
             </p>
           </div>
 
@@ -779,7 +779,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
             <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <span>
-                <strong>ผลการตรวจสอบ:</strong> ระบบมีโครงสร้างฐานข้อมูลแบบ Composite Key และ Indexed Lookup ที่สมบูรณ์ สามารถรองรับผู้ใช้ 400-500 คนพร้อมกัน และรองรับเครื่องยิงบาร์โค้ดหลายเครื่องได้อย่างแม่นยำ ไร้ความหน่วง
+                <strong>ผลการจำลองในเครื่อง:</strong> ยังต้องทดสอบหลายอุปกรณ์กับฐานข้อมูลจริงก่อนสรุปว่ารองรับผู้ใช้พร้อมกัน 400–500 คน
               </span>
             </div>
           </div>
@@ -795,7 +795,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
               คำสั่ง SQL สำหรับสร้างโครงสร้างตาราง (Supabase Schema SQL)
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              นำโค้ดนี้ไปรันในเมนู <strong>"SQL Editor"</strong> ของ Supabase เพื่อสร้างตารางทั้ง 4 ตารางพร้อมใช้งาน
+              สคริปต์นี้สร้างตารางและปิดสิทธิ์สาธารณะ ยังต้องกำหนดการเข้าสู่ระบบและสิทธิ์รายบทบาทก่อนใช้งานจริง
             </p>
           </div>
           <button
@@ -848,7 +848,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ onClose }) =
 
 const SUPABASE_SQL_TEMPLATE = `-- ==============================================================================
 -- NPU Student Activity Management System - Supabase Schema (High-Concurrency)
--- Optimized for 400-500 concurrent users and multiple simultaneous scanners
+-- Schema only. Capacity must be measured with a real load test before use.
 -- Run this script in the Supabase SQL Editor (https://supabase.com/dashboard)
 -- ==============================================================================
 
@@ -922,7 +922,7 @@ CREATE INDEX IF NOT EXISTS idx_check_in_logs_student ON public.check_in_logs(stu
 CREATE INDEX IF NOT EXISTS idx_check_in_logs_timestamp ON public.check_in_logs(timestamp DESC);
 
 -- ==============================================================================
--- Row Level Security (RLS) configuration for public access
+-- Row Level Security: deny anonymous access until authenticated roles are configured.
 -- ==============================================================================
 
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
@@ -930,18 +930,16 @@ ALTER TABLE public.activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.check_in_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reflections ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write access using anon key
+-- Remove legacy public policies. RLS with no permissive policy denies client access.
 DROP POLICY IF EXISTS "Allow public access to students" ON public.students;
-CREATE POLICY "Allow public access to students" ON public.students FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public access to activities" ON public.activities;
-CREATE POLICY "Allow public access to activities" ON public.activities FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public access to check_in_logs" ON public.check_in_logs;
-CREATE POLICY "Allow public access to check_in_logs" ON public.check_in_logs FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public access to reflections" ON public.reflections;
-CREATE POLICY "Allow public access to reflections" ON public.reflections FOR ALL USING (true) WITH CHECK (true);
+
+-- Do not grant access until Supabase Auth and role-specific RLS policies are installed.
 
 -- ==============================================================================
 -- Enable Realtime Sync for Multi-Device Simultaneous Scanning

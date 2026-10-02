@@ -150,10 +150,10 @@ export const checkSupabaseHealth = async (): Promise<SupabaseHealthCheck> => {
     if (allTablesExist) {
       return {
         connected: true,
-        message: 'เชื่อมต่อ Supabase สำเร็จและพบโครงสร้างตารางครบถ้วนทั้ง 4 ตาราง พร้อมรับข้อมูล',
+        message: 'เชื่อมต่อ Supabase และพบตารางครบ 4 ตาราง',
         tables,
         allTablesExist: true,
-        details: 'ระบบพร้อมใช้งานสำหรับการบันทึกการเช็คอิน ผลสะท้อนคิด K-P-A และซิงก์ข้อมูลแบบ Real-time'
+        details: 'การพบตารางยังไม่ยืนยันสิทธิ์การบันทึก รูปภาพ หรือการซิงก์ข้ามอุปกรณ์'
       };
     } else if (anyTableExists) {
       return {
