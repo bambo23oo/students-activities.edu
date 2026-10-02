@@ -8,7 +8,6 @@ import {
   XCircle, 
   ArrowLeft, 
   Play, 
-  Download, 
   Users, 
   Clock, 
   Volume2, 
@@ -32,9 +31,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } fro
 import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase } from '../services/supabaseApi';
 import { saveActivityStatus } from '../services/activityRepository';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
-import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
-import { MobileDeviceTesterModal } from './MobileDeviceTesterModal';
-import { StandeeModal } from './StandeeModal';
+import { getSupabaseClient } from '../lib/supabase';
 
 interface StaffScannerProps {
   onNavigateToStudent?: (studentId: string) => void;
@@ -52,10 +49,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState<string>('');
   const [cohortFilter, setCohortFilter] = useState<string>('all');
-  
-  // Scanner tools
-  const [showMobileTester, setShowMobileTester] = useState(false);
-  const [showStandeeModal, setShowStandeeModal] = useState(false);
   
   // Multi-Device & Station Configuration
   const [scannerStation, setScannerStation] = useState<string>(() => {
@@ -800,52 +793,21 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     }
   };
 
-  const handleExportLogs = async () => {
-    try {
-      const logs = await db.checkInLogs.toArray();
-      if (logs.length === 0) {
-        alert("ยังไม่มีข้อมูลการสแกนในระบบ");
-        return;
-      }
-      
-      const csvHeader = "\uFEFFLogID,StudentID,ActivityID,Timestamp,Method,Status\n";
-      const csvRows = logs.map(log => 
-        `${log.id},${log.studentId},${log.activityId},${log.timestamp},${log.method},${log.status || 'checked_in'}`
-      ).join('\n');
-      
-      const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `NPU-CheckIn-Logs-${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Export error:", err);
-    }
-  };
-
   const selectedActivityObj = activities.find(a => a.id === selectedActivityId);
 
   // --- Step 1: Session Selector ---
   if (!isScanningMode) {
     return (
-      <div className="max-w-4xl mx-auto py-4 font-sans">
-        <div className="bg-white rounded-xl p-6 sm:p-8 border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] space-y-6">
+      <div className="max-w-4xl min-w-0 mx-auto py-4 font-sans">
+        <div className="min-w-0 bg-white rounded-xl p-4 sm:p-8 border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] space-y-6">
           
           <div className="flex items-center gap-3 pb-4 border-b-2 border-stone-100">
             <div className="w-12 h-12 rounded-xl bg-[#FACC15] text-[#18181B] border-2 border-[#18181B] flex items-center justify-center font-black text-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
               ⚡
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-[#18181B]">
-                สถานีสแกนเช็คอินกิจกรรม (High-Speed Continuous Scanner)
-              </h2>
-              <p className="text-xs text-stone-500 font-medium mt-0.5">
-                ออกแบบตามหลัก UX ความเร็วสูง: Auto-focus เสมอ, Auto-submit ไร้ Pop-up ขวางคิว, Real-time Feedback
-              </p>
+              <h2 className="text-base sm:text-lg font-black text-[#18181B]">เลือกกิจกรรมเพื่อเช็คอิน</h2>
+              <p className="text-xs text-stone-600 font-medium mt-0.5">เลือกกิจกรรมและจุดสแกน แล้วเริ่มรับบัตรนักศึกษา</p>
             </div>
           </div>
 
@@ -853,7 +815,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                 <label className="block text-xs font-bold text-[#18181B]">
-                  เลือกกิจกรรมที่ต้องการเปิดรับการสแกนเช็คอิน:
+                  กิจกรรม
                 </label>
 
                 {/* Cohort quick filter pills */}
@@ -877,7 +839,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                           setSelectedActivityId(filtered[0].id);
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                      className={`min-h-11 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
                         cohortFilter === tab.id
                           ? 'bg-[#18181B] text-white shadow-sm'
                           : 'bg-[#FAF7F0] text-stone-600 hover:bg-stone-200 border border-stone-300'
@@ -892,7 +854,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               {activities.length === 0 ? (
                 <div className="p-4 bg-amber-50 border-2 border-amber-300 text-amber-900 rounded-xl text-xs flex items-center gap-3 font-medium">
                   <AlertCircle className="w-5 h-5 text-amber-700 shrink-0" />
-                  <span>ยังไม่มีกิจกรรมที่เปิดรับสแกนในระบบ กรุณาเพิ่มกิจกรรมก่อนที่เมนู "กิจกรรม (Activities)"</span>
+                  <span>ยังไม่มีกิจกรรม กรุณาเพิ่มที่เมนู “จัดการกิจกรรม”</span>
                 </div>
               ) : (
                 <select 
@@ -932,7 +894,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   </div>
                   <div className="text-[11px] text-stone-600 flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
                     <span>📅 <strong>กำหนด:</strong> {selectedActivityObj.newSchedule || selectedActivityObj.date}</span>
-                    <span>🎯 <strong>นับสะสม:</strong> 1 กิจกรรม</span>
                     <span>📍 {selectedActivityObj.location || 'คณะครุศาสตร์ ม.นครพนม'}</span>
                   </div>
 
@@ -943,11 +904,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                       {selectedActivityObj.status === 'active' ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                          <span>🟢 เปิดรับเช็คอิน (Active)</span>
+                          <span>เปิดบันทึก</span>
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
-                          <span>🔴 ปิดกิจกรรม (Closed)</span>
+                          <span>ปิดบันทึก</span>
                         </span>
                       )}
                       <span className="text-[10px] text-stone-500 font-medium">
@@ -960,7 +921,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                     <button
                       type="button"
                       onClick={() => handleToggleActivityStatus(selectedActivityObj.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 border-[#18181B] transition-all flex items-center justify-center gap-1.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 shrink-0 ${
+                      className={`min-h-11 px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] transition-all flex items-center justify-center gap-1.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 shrink-0 ${
                         selectedActivityObj.status === 'active'
                           ? 'bg-rose-50 hover:bg-rose-100 text-rose-800'
                           : 'bg-emerald-500 hover:bg-emerald-600 text-white'
@@ -968,7 +929,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                       title={selectedActivityObj.status === 'active' ? 'คลิกเพื่อปิดกิจกรรม (นักศึกษาจะมองไม่เห็นบนแดชบอร์ด)' : 'คลิกเพื่อเปิดกิจกรรม (นักศึกษาจะมองเห็น)'}
                     >
                       <Power className="w-3.5 h-3.5" />
-                      <span>{selectedActivityObj.status === 'active' ? '🔴 สั่งปิดกิจกรรม' : '🟢 สั่งเปิดกิจกรรม'}</span>
+                      <span>{selectedActivityObj.status === 'active' ? 'ปิดบันทึก' : 'เปิดบันทึก'}</span>
                     </button>
                   </div>
                 </div>
@@ -980,11 +941,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-black text-[#18181B] flex items-center gap-1.5">
-                    <span>🏢</span> กำหนดจุดสแกน / ช่องสแกนประจำเครื่องนี้ (Scanner Station):
+                    จุดสแกนของเครื่องนี้
                   </h4>
-                  <p className="text-[11px] text-stone-500 font-medium">
-                    รองรับเจ้าหน้าที่หลายคนสแกนพร้อมกันหลายเครื่อง ข้อมูลจะซิงก์รวมกันอัตโนมัติแบบเรียลไทม์
-                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 bg-[#FACC15] text-[#18181B] border border-[#18181B] rounded-lg text-xs font-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
@@ -1018,13 +976,13 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
                     <input
                       type="text"
                       placeholder="หรือพิมพ์ชื่อจุดสแกนเอง (เช่น ประตูทิศเหนือ)"
                       value={customStationInput}
                       onChange={(e) => setCustomStationInput(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-xs bg-white border border-[#18181B] rounded-lg font-medium"
+                      className="min-w-0 flex-1 px-3 py-2 text-xs bg-white border border-[#18181B] rounded-lg font-medium"
                     />
                     <button
                       type="button"
@@ -1034,7 +992,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                           setCustomStationInput('');
                         }
                       }}
-                      className="px-3 py-1.5 bg-[#18181B] text-white text-xs font-bold rounded-lg"
+                      className="min-h-11 px-4 py-2 bg-[#18181B] text-white text-xs font-bold rounded-lg"
                     >
                       บันทึกจุด
                     </button>
@@ -1042,33 +1000,18 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 </div>
               )}
 
-              {/* Cloud Sync Status Indicator */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-200 text-xs">
+              {/* Show only records that still need attention on this device. */}
+              {pendingSyncCount > 0 && <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-200 text-xs">
+                <span className="text-amber-900 font-semibold">ยังไม่ส่งข้อมูลจากเครื่องนี้</span>
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="font-bold text-stone-700">
-                    {isSupabaseConfigured() 
-                      ? 'เชื่อมต่อฐานข้อมูลกลางแล้ว'
-                      : 'ยังไม่เชื่อมต่อฐานข้อมูลกลาง'}
-                  </span>
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded font-bold text-[11px]">{pendingSyncCount} รายการ</span>
+                  <button type="button" onClick={handleManualSyncPending} disabled={isSyncingPending}
+                    className="min-h-11 px-4 py-2 bg-amber-500 text-stone-950 rounded-md text-xs font-bold hover:bg-amber-600 flex items-center gap-1.5 disabled:opacity-50">
+                    <RefreshCw className={`w-4 h-4 ${isSyncingPending ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingPending ? 'กำลังส่ง...' : 'ส่งอีกครั้ง'}</span>
+                  </button>
                 </div>
-                {pendingSyncCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded font-bold text-[11px]">
-                      รอซิงก์ {pendingSyncCount} รายการ
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleManualSyncPending}
-                      disabled={isSyncingPending}
-                      className="px-2.5 py-1 bg-amber-500 text-white rounded-md text-[11px] font-bold hover:bg-amber-600 transition-all flex items-center gap-1 shadow-xs"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isSyncingPending ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingPending ? 'กำลังซิงก์...' : 'ซิงก์ทันที'}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+              </div>}
             </div>
 
             {/* Main Action Buttons */}
@@ -1084,16 +1027,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             </div>
 
             <div className="pt-4 border-t-2 border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-              <div className="text-xs text-stone-500 font-medium">
-                รองรับเครื่องยิงบาร์โค้ด USB, กล้องสมาร์ทโฟน และแป้นพิมพ์
-              </div>
-              <button 
-                onClick={handleExportLogs}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-[#FAF7F0] text-[#18181B] text-xs font-bold rounded-xl transition-all border-2 border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] shrink-0"
-              >
-                <Download className="w-4 h-4 text-[#18181B]" />
-                <span>ส่งออกประวัติการสแกน (CSV)</span>
-              </button>
+              <div className="text-xs text-stone-600 font-medium">สแกนด้วยกล้องหรือเครื่องยิงบาร์โค้ดได้</div>
             </div>
 
           </div>
@@ -1104,7 +1038,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
   // --- Step 2: Active Scanner Station (Continuous Flow & Real-time Stream) ---
   return (
-    <div className="max-w-6xl mx-auto py-2 space-y-4 font-sans relative">
+    <div className="max-w-6xl min-w-0 mx-auto py-2 space-y-4 font-sans relative">
 
       {/* Screen Flash Visual Feedback (Success = Vivid Green, Warning = Amber, Error = Red) */}
       {screenFlash && (
@@ -1160,7 +1094,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             <button
               type="button"
               onClick={() => handleToggleActivityStatus(selectedActivityObj.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 border-[#18181B] transition-all flex items-center gap-1.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 ${
+              className={`min-h-11 px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] transition-all flex items-center gap-1.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 ${
                 selectedActivityObj.status === 'active'
                   ? 'bg-rose-50 hover:bg-rose-100 text-rose-800'
                   : 'bg-emerald-500 hover:bg-emerald-600 text-white animate-pulse'
@@ -1168,7 +1102,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               title={selectedActivityObj.status === 'active' ? 'คลิกเพื่อปิดกิจกรรม (จะซ่อนจากแดชบอร์ดนักศึกษา)' : 'คลิกเพื่อเปิดกิจกรรม (จะแสดงบนแดชบอร์ดนักศึกษา)'}
             >
               <Power className="w-3.5 h-3.5" />
-              <span>{selectedActivityObj.status === 'active' ? 'ปิดกิจกรรม' : '▶️ เปิดกิจกรรม'}</span>
+              <span>{selectedActivityObj.status === 'active' ? 'ปิดบันทึก' : 'เปิดบันทึก'}</span>
             </button>
           )}
 
@@ -1182,7 +1116,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 {selectedActivityObj?.capacity ? ` / ${selectedActivityObj.capacity}` : ''}
               </strong> คน
             </span>
-            <span className="text-stone-400 text-[10px] font-normal">(เครื่องนี้ {sessionLogs.length})</span>
           </div>
 
           {pendingSyncCount > 0 && (
@@ -1223,20 +1156,12 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
           <div className="flex items-center gap-2.5">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
             <div>
-              <span>สถานะกิจกรรม: <strong className="text-rose-700">ปิดอยู่ (Closed)</strong></span>
+              <span>กิจกรรมนี้ปิดบันทึกอยู่</span>
               <p className="text-[11px] text-stone-600 font-medium">
                 กิจกรรมนี้จะไม่แสดงบนแดชบอร์ดของนักศึกษา ยกเว้นนักศึกษาที่เคยเช็คอินเข้าร่วมแล้ว
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => handleToggleActivityStatus(selectedActivityObj.id)}
-            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shrink-0 transition-all shadow-xs flex items-center justify-center gap-1.5"
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span>สั่งเปิดกิจกรรมทันที</span>
-          </button>
         </div>
       )}
 
@@ -1353,7 +1278,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               }`}
             >
               <Keyboard className="w-4 h-4" />
-              <span>เครื่องยิงบาร์โค้ด (Hardware Scanner)</span>
+              <span>เครื่องยิงบาร์โค้ด</span>
             </button>
             <button
               onClick={() => setMode('camera')}
@@ -1364,7 +1289,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               }`}
             >
               <Camera className="w-4 h-4" />
-              <span>กล้องมือถือ / เว็บแคม (Camera)</span>
+              <span>กล้อง</span>
             </button>
           </div>
 
@@ -1380,7 +1305,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 
                 <div>
                   <h3 className="text-base sm:text-lg font-black text-[#18181B]">
-                    สถานะ: เครื่องสแกนพร้อมรับรหัส (Auto-Focused)
+                    พร้อมรับรหัสนักศึกษา
                   </h3>
                   <p className="text-xs text-stone-600 font-medium mt-1">
                     ใช้เครื่องยิงบาร์โค้ดยิงหลัง <strong>บัตรนักศึกษาจริง</strong> หรือ <strong>บัตรดิจิทัลบนมือถือ</strong> ได้ทันที
@@ -1411,9 +1336,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                     </div>
                   </div>
                   <div className="text-[11px] text-stone-500 font-bold flex items-center justify-center gap-1.5">
-                    <span className="text-emerald-700">✓ Auto-submit ทันทีเมื่อยิงเสร็จ</span>
-                    <span>•</span>
-                    <span>แปลงภาษาไทยให้อัตโนมัติ</span>
+                    <span className="text-emerald-700">ยิงบาร์โค้ดแล้วระบบบันทึกให้อัตโนมัติ</span>
                   </div>
                 </form>
 
@@ -1424,7 +1347,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                     value={manualInput}
                     onChange={(e) => setManualInput(e.target.value)}
                     placeholder="หรือพิมพ์รหัสนักศึกษา 12 หลัก"
-                    className="flex-1 px-3 py-2 bg-stone-50 border-2 border-[#18181B] rounded-xl text-xs sm:text-sm font-bold text-[#18181B] outline-none"
+                    className="min-w-0 flex-1 px-3 py-2 bg-stone-50 border-2 border-[#18181B] rounded-xl text-xs sm:text-sm font-bold text-[#18181B] outline-none"
                   />
                   <button
                     type="submit"
@@ -1732,19 +1655,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         </div>
 
       </div>
-
-      {/* Standee Modal for Walk-in Guidance */}
-      <StandeeModal
-        isOpen={showStandeeModal}
-        onClose={() => setShowStandeeModal(false)}
-      />
-
-      {/* Barcode Simulator Modal */}
-      {/* Mobile Device Tester Modal */}
-      <MobileDeviceTesterModal
-        isOpen={showMobileTester}
-        onClose={() => setShowMobileTester(false)}
-      />
 
     </div>
   );

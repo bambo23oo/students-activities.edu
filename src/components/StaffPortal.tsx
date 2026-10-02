@@ -202,6 +202,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               onClick={() => setMobileMenuOpen(true)}
+              aria-label="เปิดเมนู"
               className="min-w-11 min-h-11 flex items-center justify-center rounded-xl bg-white text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-stone-100 md:hidden"
             >
               <Menu className="w-5 h-5" />
@@ -218,17 +219,10 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
             <div className="relative">
               <button 
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-2.5 px-2.5 py-1 bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl hover:bg-stone-50 transition-all text-left"
+                className="min-h-11 flex items-center gap-2.5 px-2.5 py-1 bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-xl hover:bg-stone-50 transition-all text-left"
+                aria-label={`บัญชี ${userName}`}
               >
                 <div className="w-7 h-7 rounded-lg bg-[#18181B] text-[#FACC15] flex items-center justify-center font-black text-xs shrink-0 border border-[#18181B] overflow-hidden">
-                  <img
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-                    alt="Staff"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
                   <span>จนท</span>
                 </div>
                 <div className="hidden sm:block leading-tight">
@@ -294,7 +288,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
         </header>
 
         {/* Main Content Viewport */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8">
           {activeMenu === 'scanner' && <StaffScanner />}
           {activeMenu === 'reviews' && (
             <StaffReviewTab 

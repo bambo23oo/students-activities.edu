@@ -59,7 +59,7 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({ onNaviga
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-bold">ภาพรวมงานกิจกรรม</h2>
-          <p className="mt-1 text-sm text-stone-600">ข้อมูลที่บันทึกในอุปกรณ์นี้จะปรับเมื่อมีรายการใหม่</p>
+          <p className="mt-1 text-sm text-stone-600">ข้อมูลจากจุดสแกนต่าง ๆ จะแสดงรวมกันเมื่อเชื่อมต่อ</p>
         </div>
         <button
           type="button"

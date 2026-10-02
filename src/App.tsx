@@ -28,7 +28,10 @@ export default function App() {
         if (!verified) {
           stopRealtimeSync();
           setAccess(null);
-          setError('บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน กรุณาติดต่อเจ้าหน้าที่กิจกรรม');
+          const { data: { session } } = await getSupabaseClient()!.auth.getSession();
+          if (active && currentRevision === revision) {
+            setError(session ? 'บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน กรุณาติดต่อเจ้าหน้าที่กิจกรรม' : null);
+          }
         } else {
           await localReady;
           await pullFromSupabase();
