@@ -80,11 +80,27 @@ export const pullFromSupabase = async (scannerOnly = false) => {
   }
 
   // The scanner uses the verified cloud roster and activities only.
-  await db.transaction('rw', db.students, db.activities, db.checkInLogs, db.reflections, async () => {
+  await db.transaction('rw', db.students, db.activities, db.checkInLogs, db.reflections, db.quarantinedCheckInLogs, async () => {
     if (scannerOnly) {
+      const rosterIds = new Set(students.map(row => row.id));
+      const activityIds = new Set(activities.map(row => row.id));
+      const cloudLogIds = new Set(logs.map(row => row.id));
+      const localLogs = await db.checkInLogs.toArray();
+      const pending = localLogs.filter(log =>
+        log.syncStatus === 'pending' && rosterIds.has(log.studentId) && activityIds.has(log.activityId)
+      );
+      const pendingIds = new Set(pending.map(log => log.id));
+      const oldLocalLogs = localLogs.filter(log => !cloudLogIds.has(log.id) && !pendingIds.has(log.id));
+      if (oldLocalLogs.length) {
+        await db.quarantinedCheckInLogs.bulkPut(oldLocalLogs.map(log => ({
+          id: log.id, log, archivedAt: new Date().toISOString()
+        })));
+      }
       // The cloud roster and activity list are authoritative for live scanning.
       await db.students.clear();
       await db.activities.clear();
+      await db.checkInLogs.clear();
+      if (pending.length) await db.checkInLogs.bulkPut(pending);
     }
     if (students && students.length > 0) {
       await db.students.bulkPut(students.map(s => ({

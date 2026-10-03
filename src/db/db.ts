@@ -17,6 +17,11 @@ export class AppDatabase extends Dexie {
     reflections: Reflection[];
     archivedAt: string;
   }, string>;
+  quarantinedCheckInLogs!: Table<{
+    id: string;
+    log: CheckInLog;
+    archivedAt: string;
+  }, string>;
 
   constructor() {
     super('NPUActivityDatabase');
@@ -36,6 +41,9 @@ export class AppDatabase extends Dexie {
     this.version(4).stores({
       retiredDemoStudents: 'id, archivedAt'
     });
+    this.version(5).stores({
+      quarantinedCheckInLogs: 'id, archivedAt'
+    });
   }
 }
 
@@ -43,11 +51,12 @@ export const db = new AppDatabase();
 
 export const clearPrivateBrowserData = async (): Promise<void> => {
   await db.transaction('rw', [db.activities, db.students, db.checkInLogs,
-    db.reflections, db.systemUsers, db.auditLogs, db.retiredDemoStudents], async () => {
+    db.reflections, db.systemUsers, db.auditLogs, db.retiredDemoStudents,
+    db.quarantinedCheckInLogs], async () => {
       await Promise.all([
         db.activities.clear(), db.students.clear(), db.checkInLogs.clear(),
         db.reflections.clear(), db.systemUsers.clear(), db.auditLogs.clear(),
-        db.retiredDemoStudents.clear()
+        db.retiredDemoStudents.clear(), db.quarantinedCheckInLogs.clear()
       ]);
     });
 };
