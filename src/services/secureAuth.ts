@@ -79,7 +79,10 @@ export const signInWithStudentId = async (studentId: string, password: string): 
   const { error } = await client.auth.signInWithPassword({
     email: studentLoginEmail(cleanId), password
   });
-  if (error) throw new Error('รหัสนักศึกษาหรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง');
+  if (error) {
+    if (error.status === 429) throw new Error('มีผู้เข้าใช้งานจำนวนมาก กรุณารอสักครู่แล้วลองใหม่');
+    throw new Error('รหัสนักศึกษาหรือรหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง');
+  }
   const access = await getVerifiedAccess();
   if (!access || access.role !== 'student' || access.studentId !== cleanId) {
     await client.auth.signOut();
