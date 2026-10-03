@@ -5,6 +5,7 @@ import { getVerifiedAccess, signOut, type VerifiedAccess } from './services/secu
 import { getPendingSyncCount, pullFromSupabase, setupRealtimeSync, stopRealtimeSync } from './services/supabaseApi';
 import { LoginView } from './components/LoginView';
 import { StaffCheckinPortal } from './components/StaffCheckinPortal';
+import { StaffPasswordSetup } from './components/StaffPasswordSetup';
 
 export default function App() {
   const [access, setAccess] = useState<VerifiedAccess | null>(null);
@@ -39,14 +40,14 @@ export default function App() {
             localStorage.removeItem('npu_last_checkin');
             localStorage.setItem('npu_cache_owner', verified.userId);
           }
-          if (verified.role === 'staff') {
+          if (verified.role === 'staff' && !verified.requiresPasswordChange) {
             await localReady;
             await pullFromSupabase(true);
           }
           if (active && currentRevision === revision) {
             setAccess(verified);
             setError(null);
-            if (verified.role === 'staff') setupRealtimeSync();
+            if (verified.role === 'staff' && !verified.requiresPasswordChange) setupRealtimeSync();
           }
         }
       } catch (cause) {
@@ -92,6 +93,9 @@ export default function App() {
     return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชีเจ้าหน้าที่...</main>;
   }
   if (!access) return <LoginView error={error} />;
+  if (access.role === 'staff' && access.requiresPasswordChange) {
+    return <StaffPasswordSetup onLogout={logout} onComplete={() => window.location.reload()} />;
+  }
   if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name} />;
   return <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#F4EFE6] p-6 text-center font-['Prompt','Sarabun',sans-serif] text-[#18181B]">
     <h1 className="text-2xl font-bold">ขณะนี้เปิดเฉพาะระบบเช็กอินสำหรับเจ้าหน้าที่</h1>

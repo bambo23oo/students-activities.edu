@@ -43,7 +43,7 @@ export const getVerifiedAccess = async (): Promise<VerifiedAccess | null> => {
   }
   if (!access || !['student', 'staff', 'approver'].includes(access.role)) return null;
   if (access.role === 'student' && !access.student_id) return null;
-  const requiresPasswordChange = access.role === 'student' && access.password_rotated === false;
+  const requiresPasswordChange = access.password_rotated === false;
 
   const { data: { session } } = await client.auth.getSession();
   if (!session?.access_token) return null;
@@ -98,6 +98,13 @@ export const changeStudentPassword = async (studentId: string, currentPassword: 
   const client = requireClient();
   const { error } = await client.auth.updateUser({ password: newPassword, current_password: currentPassword });
   if (error) throw new Error('เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจรหัสเดิมแล้วลองอีกครั้ง');
+};
+
+export const setInvitedStaffPassword = async (newPassword: string): Promise<void> => {
+  if (newPassword.length < 12) throw new Error('รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร');
+  const client = requireClient();
+  const { error } = await client.auth.updateUser({ password: newPassword });
+  if (error) throw new Error('ตั้งรหัสผ่านไม่สำเร็จ กรุณาลองอีกครั้ง');
 };
 
 export const saveUniversityEmail = async (studentId: string, email: string): Promise<void> => {
