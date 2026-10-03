@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, cleanCorruptedThaiRecords } from '../db/db';
-import { Activity, CheckInLog } from '../types';
+import { Activity, CheckInLog, Student } from '../types';
 import { 
   Camera, 
   Keyboard, 
@@ -62,11 +62,14 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
   // Workflow state
   const [isScanningMode, setIsScanningMode] = useState(false);
-  const [mode, setMode] = useState<'usb' | 'camera'>('usb');
+  const [mode, setMode] = useState<'usb' | 'camera' | 'manual'>('camera');
   
   // Scanner state
   const [inputValue, setInputValue] = useState('');
   const [manualInput, setManualInput] = useState('');
+  const [manualCandidate, setManualCandidate] = useState<{ student: Student; activityId: string } | null>(null);
+  const [manualLookupError, setManualLookupError] = useState('');
+  const [manualLookingUp, setManualLookingUp] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   
   // Instant visual feedback states (Non-blocking)
@@ -89,6 +92,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const dismissTimerRef = useRef<any>(null);
   const flashTimerRef = useRef<any>(null);
   const lastScanKeyRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+  const manualLookupRequestRef = useRef(0);
   const dbUpdateDebounceRef = useRef<any>(null);
   
   // Recent check-in logs in this session
@@ -119,6 +123,13 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
   const [torchSupported, setTorchSupported] = useState<boolean>(false);
+
+  useEffect(() => {
+    ++manualLookupRequestRef.current;
+    setManualCandidate(null);
+    setManualLookupError('');
+    setManualLookingUp(false);
+  }, [selectedActivityId]);
 
   useEffect(() => {
     // Initial cleanup of any corrupted Thai logs in IndexedDB
@@ -637,14 +648,62 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     inputRef.current?.focus();
   };
 
-  const handleManualScan = async (e: React.FormEvent) => {
+  const handleManualLookup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualInput.trim() || !selectedActivityId || isProcessingRef.current) return;
+    const requestId = ++manualLookupRequestRef.current;
+    setManualCandidate(null);
+    setManualLookupError('');
+    const studentId = manualInput.trim();
+    if (!/^\d{12}$/.test(studentId)) {
+      setManualLookupError('กรุณากรอกรหัสนักศึกษา 12 หลัก');
+      return;
+    }
+    if (!selectedActivityId || activities.find(a => a.id === selectedActivityId)?.status !== 'active') {
+      setManualLookupError('กรุณาเลือกกิจกรรมที่เปิดรับเช็กอิน');
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client || !navigator.onLine) {
+      setManualLookupError('ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อตรวจสอบรายชื่อนักศึกษาก่อนบันทึก');
+      return;
+    }
+    setManualLookingUp(true);
+    try {
+      const [{ data: studentRow, error: studentError }, { data: existing, error: existingError }] = await Promise.all([
+        client.from('students').select('id, name, email, faculty, major, year').eq('id', studentId).maybeSingle(),
+        client.from('check_in_logs').select('id').eq('activity_id', selectedActivityId).eq('student_id', studentId).maybeSingle()
+      ]);
+      if (studentError || existingError) throw new Error('ตรวจสอบข้อมูลกลางไม่ได้ กรุณาลองใหม่');
+      if (!studentRow) throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาตรวจสอบรหัสอีกครั้ง');
+      if (existing || await db.checkInLogs.where('[activityId+studentId]').equals([selectedActivityId, studentId]).first()) {
+        throw new Error('นักศึกษาคนนี้เช็กอินกิจกรรมนี้แล้ว ไม่ต้องบันทึกซ้ำ');
+      }
+      const student: Student = {
+        id: studentRow.id,
+        name: studentRow.name,
+        email: studentRow.email || '',
+        faculty: studentRow.faculty || undefined,
+        major: studentRow.major || undefined,
+        year: studentRow.year || undefined
+      };
+      if (manualLookupRequestRef.current === requestId) {
+        setManualCandidate({ student, activityId: selectedActivityId });
+      }
+    } catch (error) {
+      if (manualLookupRequestRef.current === requestId) {
+        setManualLookupError(error instanceof Error ? error.message : 'ตรวจสอบข้อมูลไม่ได้ กรุณาลองใหม่');
+      }
+    } finally {
+      if (manualLookupRequestRef.current === requestId) setManualLookingUp(false);
+    }
+  };
 
-    const raw = manualInput.trim();
+  const handleManualConfirm = async () => {
+    if (!manualCandidate || manualCandidate.activityId !== selectedActivityId || manualCandidate.student.id !== manualInput || isProcessingRef.current) return;
+    const studentId = manualCandidate.student.id;
+    setManualCandidate(null);
     setManualInput('');
-    await processScan(raw, 'manual');
-    inputRef.current?.focus();
+    await processScan(studentId, 'manual');
   };
 
   // High-Speed Check-In Engine (No blocking dialogs, instantaneous feedback)
@@ -658,11 +717,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         throw new Error('กิจกรรมนี้ปิดรับบันทึกอยู่ กรุณาเปิดบันทึกก่อนสแกน');
       }
       // 1. Convert Thai keyboard encoding and extract clean student ID
-      const { studentId, source, wasConvertedFromThai } = extractAndCleanStudentID(rawInput);
-      const effectiveSource = method === 'manual' ? 'manual' : (method === 'camera' ? 'digital' : source);
+      const { studentId, wasConvertedFromThai } = extractAndCleanStudentID(rawInput);
+      const effectiveSource = method === 'manual' ? 'manual' : (method === 'camera' ? 'digital' : 'physical');
 
-      if (!studentId || studentId.length < 5) {
-        throw new Error('รหัสที่สแกนไม่ถูกต้องหรือไม่สมบูรณ์ กรุณาสแกนใหม่อีกครั้ง');
+      if (!/^\d{12}$/.test(studentId)) {
+        throw new Error('รหัสนักศึกษาต้องเป็นตัวเลข 12 หลัก กรุณาสแกนใหม่อีกครั้ง');
       }
 
       // 2. Resolve the student from the verified roster. A scanned number alone
@@ -742,7 +801,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         studentId,
         activityId: selectedActivityId,
         timestamp: checkInTimestamp,
-        method: method === 'manual' ? 'usb' : method,
+        method,
         staffStatus: 'verified',
         execStatus: 'pending',
         status: 'checked_in',
@@ -1271,8 +1330,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
           <div className="flex items-center gap-2 shrink-0">
             {scanResult.cardSource && (
               <span className="hidden sm:inline-block text-[10px] font-black px-2 py-1 rounded bg-black/10 border border-black/20">
-                {scanResult.cardSource === 'physical' ? '💳 บัตรแข็ง' : 
-                 scanResult.cardSource === 'digital' ? '📱 ดิจิทัล' : '⌨️ พิมพ์'}
+                {scanResult.cardSource === 'physical' ? '💳 เครื่องสแกน' :
+                 scanResult.cardSource === 'digital' ? '📱 กล้อง/QR' : '⌨️ กรอกรหัส'}
               </span>
             )}
             <span className="text-[10px] font-bold opacity-60">แตะเพื่อปิด</span>
@@ -1286,36 +1345,93 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         {/* Left Scanner Control (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
           
-          {/* Mode Switch Tabs (Touch Target >= 44px) */}
+          {/* Two check-in paths */}
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => setMode('usb')}
+              onClick={() => { ++manualLookupRequestRef.current; setMode('camera'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 border-[#18181B] min-h-[44px] ${
-                mode === 'usb'
+                mode !== 'manual'
                   ? 'bg-[#FACC15] text-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]'
                   : 'bg-white text-stone-600 hover:bg-[#FAF7F0]'
               }`}
             >
-              <Keyboard className="w-4 h-4" />
-              <span>เครื่องยิงบาร์โค้ด</span>
+              <Camera className="w-4 h-4 shrink-0" />
+              <span>มีบัตร: สแกน</span>
             </button>
             <button
-              onClick={() => setMode('camera')}
+              onClick={() => { ++manualLookupRequestRef.current; setMode('manual'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 border-[#18181B] min-h-[44px] ${
-                mode === 'camera'
+                mode === 'manual'
                   ? 'bg-[#FACC15] text-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]'
                   : 'bg-white text-stone-600 hover:bg-[#FAF7F0]'
               }`}
             >
-              <Camera className="w-4 h-4" />
-              <span>กล้อง</span>
+              <Keyboard className="w-4 h-4 shrink-0" />
+              <span>ไม่มีบัตร: กรอกรหัส</span>
             </button>
           </div>
+
+          {mode !== 'manual' && (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+              <span className="text-stone-600">อุปกรณ์สแกน:</span>
+              <button type="button" onClick={() => setMode('camera')}
+                className={`min-h-11 px-3 rounded-lg border-2 border-[#18181B] ${mode === 'camera' ? 'bg-[#18181B] text-white' : 'bg-white text-[#18181B]'}`}>
+                กล้องมือถือ/เว็บแคม
+              </button>
+              <button type="button" onClick={() => setMode('usb')}
+                className={`min-h-11 px-3 rounded-lg border-2 border-[#18181B] ${mode === 'usb' ? 'bg-[#18181B] text-white' : 'bg-white text-[#18181B]'}`}>
+                เครื่องสแกน USB
+              </button>
+            </div>
+          )}
 
           {/* Scanner Viewport Box */}
           <div className="bg-white rounded-xl border-2 border-[#18181B] p-5 sm:p-7 text-center min-h-[350px] flex flex-col items-center justify-center shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] relative overflow-hidden">
             
-            {mode === 'usb' ? (
+            {mode === 'manual' ? (
+              <div className="w-full max-w-md space-y-4 text-left">
+                <div className="text-center space-y-1">
+                  <div className="w-14 h-14 rounded-xl bg-[#FACC15] border-2 border-[#18181B] flex items-center justify-center mx-auto">
+                    <Keyboard className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-[#18181B]">นักศึกษาไม่มีบัตร</h3>
+                  <p className="text-sm text-stone-600">กรอกรหัส 12 หลัก แล้วตรวจสอบชื่อและข้อมูลนักศึกษาก่อนยืนยัน</p>
+                </div>
+                <form onSubmit={handleManualLookup} className="space-y-3">
+                  <label htmlFor="manual-student-id" className="block text-sm font-bold text-stone-900">รหัสนักศึกษา</label>
+                  <input id="manual-student-id" type="text" inputMode="numeric" autoComplete="off" maxLength={12}
+                    value={manualInput}
+                    onChange={(e) => { ++manualLookupRequestRef.current; setManualInput(e.target.value.replace(/\D/g, '').slice(0, 12)); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
+                    placeholder="กรอกรหัสนักศึกษา 12 หลัก"
+                    className="w-full min-h-12 px-4 bg-[#FAF7F0] border-2 border-[#18181B] rounded-xl text-base font-mono font-bold text-[#18181B] outline-none focus:ring-4 focus:ring-[#FACC15]"
+                  />
+                  <button type="submit" disabled={manualLookingUp || selectedActivityObj?.status !== 'active'}
+                    className="w-full min-h-12 px-4 bg-[#18181B] text-[#FACC15] rounded-xl font-bold disabled:opacity-50">
+                    {manualLookingUp ? 'กำลังตรวจสอบรายชื่อ...' : 'ค้นหารายชื่อนักศึกษา'}
+                  </button>
+                </form>
+                {manualLookupError && <p role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-400 text-rose-900 text-sm font-bold">{manualLookupError}</p>}
+                {manualCandidate && manualCandidate.activityId === selectedActivityId && (
+                  <div className="space-y-3 rounded-xl border-2 border-[#18181B] bg-amber-50 p-4" aria-live="polite">
+                    <p className="text-sm font-black text-stone-900">ตรวจสอบตัวตนก่อนบันทึก</p>
+                    <div className="text-sm text-stone-900 space-y-1 break-words">
+                      <p><strong>ชื่อ:</strong> {manualCandidate.student.name}</p>
+                      <p><strong>รหัส:</strong> {manualCandidate.student.id}</p>
+                      <p><strong>สาขา:</strong> {manualCandidate.student.major || 'ไม่ระบุ'}</p>
+                      <p><strong>ชั้นปี:</strong> {manualCandidate.student.year || 'ไม่ระบุ'}</p>
+                      <p><strong>กิจกรรม:</strong> {selectedActivityObj?.name}</p>
+                    </div>
+                    <p className="text-xs text-stone-700">สอบถามชื่อ–รหัสจากนักศึกษา และเปรียบเทียบกับข้อมูลข้างต้น</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button type="button" onClick={() => { setManualCandidate(null); setManualInput(''); }}
+                        className="min-h-12 rounded-xl border-2 border-[#18181B] bg-white px-3 font-bold text-sm">ข้อมูลไม่ตรง / ยกเลิก</button>
+                      <button type="button" onClick={handleManualConfirm}
+                        className="min-h-12 rounded-xl border-2 border-[#18181B] bg-emerald-500 px-3 font-black text-sm text-white">ข้อมูลตรง ยืนยันเช็กอิน</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : mode === 'usb' ? (
               <div className="w-full max-w-md space-y-4">
                 
                 <div className="w-14 h-14 rounded-xl bg-[#FACC15] border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center mx-auto">
@@ -1357,23 +1473,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   <div className="text-[11px] text-stone-500 font-bold flex items-center justify-center gap-1.5">
                     <span className="text-emerald-700">ยิงบาร์โค้ดแล้วระบบบันทึกให้อัตโนมัติ</span>
                   </div>
-                </form>
-
-                {/* Manual Fallback Input */}
-                <form onSubmit={handleManualScan} className="flex gap-2 pt-2 border-t-2 border-stone-100">
-                  <input
-                    type="text"
-                    value={manualInput}
-                    onChange={(e) => setManualInput(e.target.value)}
-                    placeholder="หรือพิมพ์รหัสนักศึกษา 12 หลัก"
-                    className="min-w-0 flex-1 px-3 py-2 bg-stone-50 border-2 border-[#18181B] rounded-xl text-xs sm:text-sm font-bold text-[#18181B] outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-[#18181B] hover:bg-stone-800 text-[#FACC15] text-xs font-bold rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)] transition-all shrink-0 min-h-[44px]"
-                  >
-                    บันทึก
-                  </button>
                 </form>
 
               </div>
@@ -1526,15 +1625,13 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
           </div>
 
-          <div className="text-[11px] text-stone-500 flex items-center justify-between px-2 font-medium">
-            <span>⚡ สแกนต่อเนื่องได้ทันที ระบบจะล้างช่องว่างและรอคนต่อไปใน 0.2 วินาที</span>
-            <button 
-              onClick={() => inputRef.current?.focus()}
-              className="text-[#18181B] font-bold hover:underline"
-            >
-              คลิกเพื่อดึง Cursor
-            </button>
-          </div>
+          {mode === 'usb' && (
+            <div className="text-[11px] text-stone-500 flex items-center justify-between px-2 font-medium gap-2">
+              <span>สแกนต่อเนื่องได้ เมื่อได้ยินเสียงตอบรับให้ดูผลการบันทึกบนหน้าจอ</span>
+              <button type="button" onClick={() => inputRef.current?.focus()}
+                className="text-[#18181B] font-bold hover:underline shrink-0">พร้อมสแกน</button>
+            </div>
+          )}
 
         </div>
 
@@ -1655,13 +1752,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-black border border-amber-300 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                             ⚠️ ฉุกเฉิน (รอรูป)
                           </span>
-                        ) : log.cardType === 'digital' || log.isPreRegistered ? (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 font-black border border-emerald-300 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                            ⚡ Fast Track
-                          </span>
                         ) : (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-white text-[#18181B] font-bold border border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                            {log.cardType === 'physical' ? '💳 บัตรแข็ง' : '⌨️ คีย์'}
+                            {log.method === 'camera' ? '📱 กล้อง/QR' : log.method === 'usb' ? '💳 เครื่องสแกน' : '⌨️ กรอกรหัส'}
                           </span>
                         )}
                       </div>
