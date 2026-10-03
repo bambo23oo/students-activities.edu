@@ -31,21 +31,21 @@ export const LoginView = ({ error }: LoginViewProps) => {
   return (
     <main className="min-h-[100dvh] bg-[#F4EFE6] text-[#18181B] font-['Prompt','Sarabun',sans-serif] flex flex-col">
       <div className="h-2 bg-[#EA580C] border-b-2 border-[#18181B]" aria-hidden="true" />
-      <div className="flex-1 w-full max-w-6xl mx-auto grid lg:grid-cols-[1.08fr_0.92fr] items-center gap-8 lg:gap-14 px-5 sm:px-8 lg:px-12 py-8 sm:py-12">
+      <div className="flex-1 w-full max-w-6xl mx-auto grid lg:grid-cols-[1.08fr_0.92fr] items-start lg:items-center gap-5 lg:gap-14 px-5 sm:px-8 lg:px-12 py-5 sm:py-12">
         <section aria-labelledby="system-title" className="text-center lg:text-left">
           <div className="flex justify-center lg:justify-start">
-            <NPULogo size="custom" className="w-28 h-40 sm:w-36 sm:h-48 lg:w-44 lg:h-60" />
+            <NPULogo size="custom" className="w-16 h-24 sm:w-36 sm:h-48 lg:w-44 lg:h-60" />
           </div>
-          <div className="mt-4 sm:mt-6">
+          <div className="mt-2 sm:mt-6">
             <div className="inline-flex items-center gap-2 bg-[#FACC15] border-2 border-[#18181B] px-4 py-2 text-xs sm:text-sm font-bold shadow-[3px_3px_0px_0px_#18181B]">
               <BookOpenCheck className="w-4 h-4" aria-hidden="true" />
               ระบบกิจกรรมสำหรับนักศึกษาและบุคลากร
             </div>
-            <h1 id="system-title" className="mt-6 text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-black tracking-tight text-[#18181B]">
+            <h1 id="system-title" className="mt-3 sm:mt-6 text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-black tracking-tight text-[#18181B]">
               สมุดบันทึกกิจกรรมดิจิทัล
             </h1>
-            <div className="mt-4 h-1.5 w-20 bg-[#EA580C] mx-auto lg:mx-0" aria-hidden="true" />
-            <p className="mt-5 text-base sm:text-lg font-semibold leading-relaxed">
+            <div className="mt-3 h-1.5 w-20 bg-[#EA580C] mx-auto lg:mx-0" aria-hidden="true" />
+            <p className="mt-3 sm:mt-5 text-base sm:text-lg font-semibold leading-relaxed">
               ศูนย์ฝึกประสบการณ์วิชาชีพครู
             </p>
             <p className="mt-1 text-sm sm:text-base font-medium text-[#57534E] leading-relaxed">
