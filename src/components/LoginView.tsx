@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpenCheck, ShieldCheck } from 'lucide-react';
 import { NPULogo } from './NPULogo';
-import { signInWithEmail, signInWithStudentId } from '../services/secureAuth';
+import { signInWithEmail } from '../services/secureAuth';
 
 interface LoginViewProps {
   error?: string | null;
@@ -10,7 +10,6 @@ interface LoginViewProps {
 export const LoginView = ({ error }: LoginViewProps) => {
   const [isStarting, setIsStarting] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
-  const [accountType, setAccountType] = useState<'student' | 'staff'>('student');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
 
@@ -19,8 +18,7 @@ export const LoginView = ({ error }: LoginViewProps) => {
     setIsStarting(true);
     setSignInError(null);
     try {
-      if (accountType === 'student') await signInWithStudentId(identifier, password);
-      else await signInWithEmail(identifier, password);
+      await signInWithEmail(identifier, password);
     } catch (cause) {
       setSignInError(cause instanceof Error ? cause.message : 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง');
     } finally {
@@ -39,7 +37,7 @@ export const LoginView = ({ error }: LoginViewProps) => {
           <div className="mt-2 sm:mt-6">
             <div className="inline-flex items-center gap-2 bg-[#FACC15] border-2 border-[#18181B] px-4 py-2 text-xs sm:text-sm font-bold shadow-[3px_3px_0px_0px_#18181B]">
               <BookOpenCheck className="w-4 h-4" aria-hidden="true" />
-              ระบบกิจกรรมสำหรับนักศึกษาและบุคลากร
+              ระบบเช็กอินกิจกรรมสำหรับเจ้าหน้าที่
             </div>
             <h1 id="system-title" className="mt-3 sm:mt-6 text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-black tracking-tight text-[#18181B]">
               สมุดบันทึกกิจกรรมดิจิทัล
@@ -61,26 +59,14 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </span>
             <div>
               <h2 id="login-title" className="text-xl sm:text-2xl font-bold leading-tight">เข้าสู่ระบบ</h2>
-              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">นักศึกษาใช้รหัสนักศึกษา เจ้าหน้าที่ใช้อีเมลบัญชีงาน</p>
+              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">เจ้าหน้าที่ใช้อีเมลและรหัสผ่านที่ได้รับสิทธิ์</p>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-2" role="group" aria-label="ประเภทบัญชี">
-            {(['student', 'staff'] as const).map(type => (
-              <button key={type} type="button" aria-pressed={accountType === type}
-                onClick={() => { setAccountType(type); setIdentifier(''); setPassword(''); setSignInError(null); }}
-                className={`min-h-11 border-2 border-[#18181B] px-4 py-2 text-sm font-semibold ${accountType === type ? 'bg-[#FACC15] text-[#18181B]' : 'bg-white text-[#57534E]'}`}>
-                {type === 'student' ? 'นักศึกษา' : 'เจ้าหน้าที่'}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleSignIn} className="mt-5 space-y-4">
+          <form onSubmit={handleSignIn} className="mt-6 space-y-4">
             <div>
-              <label htmlFor="login-identifier" className="block text-sm font-semibold">{accountType === 'student' ? 'รหัสนักศึกษา 12 หลัก' : 'อีเมลเจ้าหน้าที่'}</label>
-              <input id="login-identifier" required autoComplete={accountType === 'student' ? 'username' : 'email'}
-                inputMode={accountType === 'student' ? 'numeric' : 'email'}
-                type={accountType === 'student' ? 'text' : 'email'} maxLength={accountType === 'student' ? 12 : undefined}
+              <label htmlFor="login-identifier" className="block text-sm font-semibold">อีเมลเจ้าหน้าที่</label>
+              <input id="login-identifier" required autoComplete="email" inputMode="email" type="email"
                 value={identifier} onChange={event => setIdentifier(event.target.value)}
                 className="mt-1 min-h-12 w-full min-w-0 border-2 border-stone-400 bg-white px-4 py-2 text-base focus:outline-4 focus:outline-offset-2 focus:outline-[#2563EB]" />
             </div>
@@ -97,7 +83,7 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </button>
           </form>
 
-          {accountType === 'student' && <p className="mt-4 text-sm leading-relaxed text-[#57534E]">เข้าใช้ครั้งแรกให้ใช้รหัสนักศึกษาเป็นรหัสผ่าน ระบบจะให้เปลี่ยนรหัสผ่านทันที</p>}
+          <p className="mt-4 text-sm leading-relaxed text-[#57534E]">ขณะนี้เปิดเฉพาะการสแกนและบันทึกเช็กอิน หน้าบันทึกของนักศึกษาจะเปิดภายหลัง</p>
 
           {(signInError || error) && (
             <p role="alert" aria-live="polite" className="mt-5 border-l-4 border-rose-700 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-900">

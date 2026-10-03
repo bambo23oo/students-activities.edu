@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { getSupabaseClient } from './lib/supabase';
-import { clearPrivateBrowserData, initializeLocalActivities, retireLegacyDemoStudents } from './db/db';
+import { clearPrivateBrowserData, retireLegacyDemoStudents } from './db/db';
 import { getVerifiedAccess, signOut, type VerifiedAccess } from './services/secureAuth';
-import { getPendingSyncCount, pullFromSupabase, pullStudentUpdates, setupRealtimeSync, stopRealtimeSync } from './services/supabaseApi';
+import { getPendingSyncCount, pullFromSupabase, setupRealtimeSync, stopRealtimeSync } from './services/supabaseApi';
 import { LoginView } from './components/LoginView';
-import { StudentPasswordSetup } from './components/StudentPasswordSetup';
-import { StaffPortal } from './components/StaffPortal';
-import { StudentPortal } from './components/StudentPortal';
-import { ExecutiveAdminDashboard } from './components/ExecutiveAdminDashboard';
+import { StaffCheckinPortal } from './components/StaffCheckinPortal';
 
 export default function App() {
   const [access, setAccess] = useState<VerifiedAccess | null>(null);
@@ -17,22 +14,8 @@ export default function App() {
   useEffect(() => {
     let active = true;
     let revision = 0;
-    let studentPoll: number | undefined;
-    let studentIdForPolling: string | undefined;
-    let pollBusy = false;
-    const pollStudent = async () => {
-      if (!studentIdForPolling || pollBusy || document.hidden || !navigator.onLine) return;
-      pollBusy = true;
-      try { await pullStudentUpdates(studentIdForPolling); }
-      catch (cause) { console.warn('Student refresh failed:', cause); }
-      finally { pollBusy = false; }
-    };
-    const onVisible = () => { if (!document.hidden) void pollStudent(); };
-    document.addEventListener('visibilitychange', onVisible);
-    const localReady = Promise.all([
-      initializeLocalActivities(),
-      retireLegacyDemoStudents()
-    ]).catch(cause => console.error('Local data migration failed:', cause));
+    const localReady = retireLegacyDemoStudents()
+      .catch(cause => console.error('Local data migration failed:', cause));
     const refresh = async () => {
       const currentRevision = ++revision;
       try {
@@ -40,9 +23,6 @@ export default function App() {
         if (!active || currentRevision !== revision) return;
         if (!verified) {
           stopRealtimeSync();
-          if (studentPoll) window.clearInterval(studentPoll);
-          studentPoll = undefined;
-          studentIdForPolling = undefined;
           setAccess(null);
           const { data: { session } } = await getSupabaseClient()!.auth.getSession();
           if (active && currentRevision === revision) {
@@ -56,24 +36,17 @@ export default function App() {
               throw new Error('เครื่องนี้ยังมีรายการเช็คอินของบัญชีเดิมที่รอส่ง กรุณาให้เจ้าหน้าที่บัญชีเดิมส่งข้อมูลก่อน');
             }
             await clearPrivateBrowserData();
+            localStorage.removeItem('npu_last_checkin');
             localStorage.setItem('npu_cache_owner', verified.userId);
           }
-          if (!verified.requiresPasswordChange) {
+          if (verified.role === 'staff') {
             await localReady;
-            await pullFromSupabase();
+            await pullFromSupabase(true);
           }
           if (active && currentRevision === revision) {
             setAccess(verified);
             setError(null);
-            if (studentPoll) window.clearInterval(studentPoll);
-            studentPoll = undefined;
-            studentIdForPolling = undefined;
-            if (!verified.requiresPasswordChange) {
-              if (verified.role === 'student' && verified.studentId) {
-                studentIdForPolling = verified.studentId;
-                studentPoll = window.setInterval(pollStudent, 30_000);
-              } else setupRealtimeSync();
-            }
+            if (verified.role === 'staff') setupRealtimeSync();
           }
         }
       } catch (cause) {
@@ -97,8 +70,6 @@ export default function App() {
     });
     return () => {
       active = false;
-      if (studentPoll) window.clearInterval(studentPoll);
-      document.removeEventListener('visibilitychange', onVisible);
       stopRealtimeSync();
       subscription.unsubscribe();
     };
@@ -112,24 +83,19 @@ export default function App() {
     await signOut();
     stopRealtimeSync();
     await clearPrivateBrowserData();
+    localStorage.removeItem('npu_last_checkin');
     localStorage.removeItem('npu_cache_owner');
     setAccess(null);
   };
 
   if (checking) {
-    return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชีมหาวิทยาลัย...</main>;
+    return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชีเจ้าหน้าที่...</main>;
   }
   if (!access) return <LoginView error={error} />;
-  if (access.role === 'student' && access.requiresPasswordChange && access.studentId) {
-    return <StudentPasswordSetup studentId={access.studentId} onLogout={logout} onComplete={() => window.location.reload()} />;
-  }
-
-  const commonClass = "h-[100dvh] min-h-[100dvh] flex flex-col bg-[#F4EFE6] text-[#18181B] font-['Prompt','Sarabun',sans-serif] antialiased overflow-hidden";
-  if (access.role === 'student') {
-    return <div className={commonClass}><StudentPortal studentId={access.studentId} studentName={access.name} studentEmail={access.email} onLogout={logout} isUserAdmin={false} /></div>;
-  }
-  if (access.role === 'staff') {
-    return <div className={commonClass}><StaffPortal onLogout={logout} userName={access.name} userEmail={access.email} isUserAdmin={false} /></div>;
-  }
-  return <div className={commonClass}><ExecutiveAdminDashboard onLogout={logout} userName={access.name} userEmail={access.email} isUserAdmin={false} /></div>;
+  if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name} />;
+  return <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#F4EFE6] p-6 text-center font-['Prompt','Sarabun',sans-serif] text-[#18181B]">
+    <h1 className="text-2xl font-bold">ขณะนี้เปิดเฉพาะระบบเช็กอินสำหรับเจ้าหน้าที่</h1>
+    <p className="max-w-lg text-[#57534E]">ระบบบันทึกของนักศึกษาจะเปิดในระยะถัดไป ข้อมูลการเช็กอินที่เจ้าหน้าที่บันทึกไว้จะเก็บในฐานข้อมูลกลาง</p>
+    <button type="button" onClick={logout} className="min-h-11 bg-[#EA580C] px-6 py-3 font-semibold text-white">ออกจากระบบ</button>
+  </main>;
 }

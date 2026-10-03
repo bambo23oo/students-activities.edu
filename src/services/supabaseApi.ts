@@ -55,7 +55,7 @@ const mapCloudActivity = (a: any): Activity => ({
   source: a.source || 'imported'
 });
 
-export const pullFromSupabase = async () => {
+export const pullFromSupabase = async (scannerOnly = false) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('ยังไม่ได้เชื่อมต่อกับ Supabase (กรุณากรอก URL และ API Key)');
 
@@ -72,11 +72,20 @@ export const pullFromSupabase = async () => {
   };
 
   const [students, activities, logs, reflections] = await Promise.all([
-    readAll('students'), readAll('activities'), readAll('check_in_logs'), readAll('reflections')
+    readAll('students'), readAll('activities'), readAll('check_in_logs'),
+    scannerOnly ? Promise.resolve([]) : readAll('reflections')
   ]);
+  if (scannerOnly && (!students.length || !activities.length)) {
+    throw new Error('ไม่พบทะเบียนนักศึกษาหรือกิจกรรมในฐานข้อมูลกลาง กรุณาตรวจสิทธิ์บัญชีเจ้าหน้าที่');
+  }
 
-  // A partial or empty cloud response must never erase browser records.
+  // The scanner uses the verified cloud roster and activities only.
   await db.transaction('rw', db.students, db.activities, db.checkInLogs, db.reflections, async () => {
+    if (scannerOnly) {
+      // The cloud roster and activity list are authoritative for live scanning.
+      await db.students.clear();
+      await db.activities.clear();
+    }
     if (students && students.length > 0) {
       await db.students.bulkPut(students.map(s => ({
         id: s.id,
@@ -119,6 +128,40 @@ export const pullFromSupabase = async () => {
     }
   });
   window.dispatchEvent(new Event('db_updated'));
+};
+
+/** Refresh the selected scanner activity even when Realtime is interrupted. */
+export const pullScannerActivityUpdates = async (): Promise<void> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('ยังไม่ได้เชื่อมต่อฐานข้อมูลกลาง');
+  const { data, error } = await supabase.from('activities').select('*');
+  if (error) throw new Error(formatSupabaseError(error));
+  if (!data?.length) throw new Error('ไม่พบกิจกรรมในฐานข้อมูลกลาง กรุณาตรวจสิทธิ์บัญชีเจ้าหน้าที่');
+  await db.transaction('rw', db.activities, async () => {
+    await db.activities.clear();
+    if (data?.length) await db.activities.bulkPut(data.map(mapCloudActivity));
+  });
+  window.dispatchEvent(new Event('db_updated'));
+};
+
+export const pullScannerCheckInUpdates = async (activityId: string): Promise<number> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('ยังไม่ได้เชื่อมต่อฐานข้อมูลกลาง');
+  const { data, count, error } = await supabase.from('check_in_logs')
+    .select('id, student_id, activity_id, timestamp, method, staff_status, exec_status, scanner_station', { count: 'exact' })
+    .eq('activity_id', activityId)
+    .order('timestamp', { ascending: false })
+    .limit(50);
+  if (error) throw new Error(formatSupabaseError(error));
+  if (data?.length) {
+    await db.checkInLogs.bulkPut(data.map(row => ({
+      id: row.id, studentId: row.student_id, activityId: row.activity_id,
+      timestamp: row.timestamp, method: row.method || 'camera',
+      staffStatus: row.staff_status || 'pending', execStatus: row.exec_status || 'pending',
+      scannerStation: row.scanner_station || undefined, syncStatus: 'synced' as const
+    })));
+  }
+  return count ?? 0;
 };
 
 // Student sessions use a small periodic refresh instead of holding a Realtime

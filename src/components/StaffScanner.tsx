@@ -28,7 +28,7 @@ import {
   Power
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from 'html5-qrcode';
-import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase } from '../services/supabaseApi';
+import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase, pullScannerActivityUpdates, pullScannerCheckInUpdates } from '../services/supabaseApi';
 import { saveActivityStatus } from '../services/activityRepository';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
 import { getSupabaseClient } from '../lib/supabase';
@@ -150,6 +150,49 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       window.removeEventListener('db_updated', handleDbUpdate);
     };
   }, [selectedActivityId]);
+
+  useEffect(() => {
+    if (!selectedActivityId) return;
+    let stopped = false;
+    let busy = false;
+    const refresh = async () => {
+      if (busy || document.hidden || !navigator.onLine) return;
+      busy = true;
+      try {
+        const centralCount = await pullScannerCheckInUpdates(selectedActivityId);
+        if (!stopped) {
+          await loadSessionLogs(selectedActivityId);
+          setTotalActivityCount(centralCount);
+        }
+      } catch (cause) {
+        console.warn('Scanner check-in refresh failed:', cause);
+      } finally {
+        busy = false;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 10_000);
+    const onVisible = () => { if (!document.hidden) void refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [selectedActivityId]);
+
+  useEffect(() => {
+    let busy = false;
+    const refresh = async () => {
+      if (busy || document.hidden || !navigator.onLine) return;
+      busy = true;
+      try { await pullScannerActivityUpdates(); }
+      catch (cause) { console.warn('Scanner activity refresh failed:', cause); }
+      finally { busy = false; }
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const loadActivities = async () => {
     const acts = await db.activities.toArray();
@@ -708,41 +751,17 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       };
       await db.checkInLogs.put(newLog);
 
-      // 5. Broadcast real-time update across all open tabs, windows & devices
-      try {
-        const broadcastPayload = {
-          type: 'check_in',
-          studentId,
-          activityId: selectedActivityId,
-          activityName: currentAct?.name,
-          timestamp: checkInTimestamp,
-          studentName: student.name,
-          scannerStation
-        };
-
-        window.dispatchEvent(new CustomEvent('db_updated', {
-          detail: broadcastPayload
-        }));
-
-        // BroadcastChannel for cross-tab instantaneous sync
-        const bc = new BroadcastChannel('npu_db_sync');
-        bc.postMessage(broadcastPayload);
-        bc.close();
-
-        // LocalStorage event trigger for independent windows
-        localStorage.setItem('npu_last_checkin', JSON.stringify({
-          ...broadcastPayload,
-          time: Date.now()
-        }));
-      } catch (e) {
-        console.log('Sync broadcast note:', e);
-      }
-
       // Confirm the central write before telling staff that a check-in succeeded.
       const syncResult = await logCheckInToSupabase(newLog, student);
       if (syncResult === 'closed') {
         await db.checkInLogs.delete(newLog.id);
         throw new Error('กิจกรรมนี้ปิดบันทึกในฐานข้อมูลกลางแล้ว กรุณาเลือกกิจกรรมที่เปิดอยู่');
+      }
+      if (syncResult === 'synced' || syncResult === 'duplicate') {
+        window.dispatchEvent(new Event('db_updated'));
+        const bc = new BroadcastChannel('npu_db_sync');
+        bc.postMessage({ type: 'check_in', studentId, activityId: selectedActivityId });
+        bc.close();
       }
       getPendingSyncCount().then(setPendingSyncCount).catch(() => {});
       triggerAudioAndHaptic(syncResult === 'synced' ? 'success' : 'warning');
@@ -1038,7 +1057,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
   // --- Step 2: Active Scanner Station (Continuous Flow & Real-time Stream) ---
   return (
-    <div className="max-w-6xl min-w-0 mx-auto py-2 space-y-4 font-sans relative">
+    <div className="max-w-6xl min-w-0 mx-auto py-2 space-y-4 font-['Prompt','Sarabun',sans-serif] relative">
 
       {/* Screen Flash Visual Feedback (Success = Vivid Green, Warning = Amber, Error = Red) */}
       {screenFlash && (
@@ -1060,11 +1079,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             {selectedActivityObj?.status === 'active' ? (
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md text-[10px] font-bold">
                 <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                <span>🟢 เปิดรับสแกนสด (Active)</span>
+                <span>เปิดรับสแกน</span>
               </div>
             ) : (
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded-md text-[10px] font-black">
-                <span>🔴 ปิดกิจกรรม (Closed)</span>
+                <span>ปิดรับสแกน</span>
               </div>
             )}
             {selectedActivityObj?.id && (
@@ -1526,7 +1545,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#18181B]" />
                 <h3 className="text-xs sm:text-sm font-black text-[#18181B]">
-                  สตรีมรายชื่อล่าสุด (Live Stream)
+                  รายการเช็กอินล่าสุด
                 </h3>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1580,7 +1599,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 </div>
                 <div className="text-xs font-bold text-stone-700">ยังไม่มีประวัติการสแกนในรอบนี้</div>
                 <p className="text-[11px] text-stone-400 mt-0.5 font-medium">
-                  เมื่อสแกนบัตรนักศึกษา รายชื่อจะแสดงและอัปเดตสดที่นี่ทันที
+                  เมื่อบันทึกเช็กอินสำเร็จ รายชื่อจะปรากฏที่นี่
                 </p>
               </div>
             ) : logFilter === 'invalid' && sessionLogs.filter(l => l.isTemporary).length === 0 ? (
