@@ -121,6 +121,38 @@ export const pullFromSupabase = async () => {
   window.dispatchEvent(new Event('db_updated'));
 };
 
+// Student sessions use a small periodic refresh instead of holding a Realtime
+// socket each. This keeps the free project's connection pool for scan stations.
+export const pullStudentUpdates = async (studentId: string): Promise<void> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const [activities, logs, reflections] = await Promise.all([
+    supabase.from('activities').select('*'),
+    supabase.from('check_in_logs').select('*').eq('student_id', studentId),
+    supabase.from('reflections').select('*').eq('student_id', studentId)
+  ]);
+  const error = activities.error || logs.error || reflections.error;
+  if (error) throw new Error(formatSupabaseError(error));
+  await db.transaction('rw', db.activities, db.checkInLogs, db.reflections, async () => {
+    if (activities.data?.length) await db.activities.bulkPut(activities.data.map(mapCloudActivity));
+    if (logs.data?.length) await db.checkInLogs.bulkPut(logs.data.map(l => ({
+      id: l.id, studentId: l.student_id, activityId: l.activity_id,
+      timestamp: l.timestamp, method: l.method || 'camera',
+      staffStatus: l.staff_status || 'pending', execStatus: l.exec_status || 'pending',
+      scannerStation: l.scanner_station || undefined, syncStatus: 'synced' as const
+    })));
+    if (reflections.data?.length) await db.reflections.bulkPut(reflections.data.map(r => ({
+      id: r.id, logId: r.log_id || undefined, studentId: r.student_id,
+      activityId: r.activity_id, knowledge: r.k_knowledge || '',
+      practice: r.p_skill || '', attitude: r.a_attitude || '',
+      evidencePath: r.evidence_path || undefined,
+      status: r.status || 'pending_step1', submittedAt: r.submitted_at || undefined,
+      rejectionReason: r.reject_reason || undefined
+    })));
+  });
+  window.dispatchEvent(new Event('db_updated'));
+};
+
 export const logCheckInToSupabase = async (log: CheckInLog, student: Student): Promise<'synced' | 'duplicate' | 'closed' | 'pending'> => {
   const supabase = getSupabaseClient();
   if (!supabase) {

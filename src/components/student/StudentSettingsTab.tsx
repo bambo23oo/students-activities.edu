@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Settings, 
   Type, 
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Student } from '../../types';
 import { compressAndConvertToBase64 } from '../../utils/imageUtils';
+import { getUniversityEmail, saveUniversityEmail } from '../../services/secureAuth';
 
 interface StudentSettingsTabProps {
   student: Student | null;
@@ -51,7 +52,28 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [universityEmail, setUniversityEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailMessage, setEmailMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (studentId) getUniversityEmail(studentId).then(setUniversityEmail).catch(() => {});
+  }, [studentId]);
+
+  const handleSaveEmail = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingEmail(true);
+    setEmailMessage(null);
+    try {
+      await saveUniversityEmail(studentId, universityEmail);
+      setEmailMessage('บันทึกอีเมลแล้ว ยังไม่ได้ยืนยันความเป็นเจ้าของ');
+    } catch (cause) {
+      setEmailMessage(cause instanceof Error ? cause.message : 'บันทึกอีเมลไม่สำเร็จ');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,12 +122,30 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
       <div className="bg-[#F7F4EB] border-2 border-[#18181B] p-4 sm:p-5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
         <h2 className="text-base sm:text-lg font-black uppercase tracking-wider text-[#18181B] flex items-center gap-2">
           <Settings className="w-5 h-5 text-[#EA580C]" />
-          <span>การตั้งค่าระบบ (SETTINGS & PREFERENCES)</span>
+          <span>ข้อมูลบัญชี</span>
         </h2>
         <p className="text-xs text-stone-600 font-bold mt-0.5">
-          จัดการโปรไฟล์ รูปถ่ายประจำตัว และการเชื่อมต่อระบบ
+          จัดการข้อมูลติดต่อและรูปถ่ายประจำตัว
         </p>
       </div>
+
+      <form onSubmit={handleSaveEmail} className="border-2 border-[#18181B] bg-white p-4 sm:p-5 space-y-3">
+        <div>
+          <h3 className="text-base font-bold">อีเมลมหาวิทยาลัย</h3>
+          <p className="mt-1 text-sm text-stone-600">กรอกอีเมล @npu.ac.th สำหรับติดต่อ ยังไม่ใช้แทนรหัสนักศึกษาในการเข้าสู่ระบบ</p>
+        </div>
+        <label htmlFor="university-email" className="block text-sm font-semibold">อีเมลมหาวิทยาลัย</label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input id="university-email" type="email" autoComplete="email" required value={universityEmail}
+            onChange={event => setUniversityEmail(event.target.value)} placeholder="ชื่อผู้ใช้@npu.ac.th"
+            className="min-h-11 min-w-0 flex-1 border-2 border-stone-400 bg-white px-4 py-2 text-base" />
+          <button type="submit" disabled={savingEmail}
+            className="min-h-11 bg-[#EA580C] px-6 py-3 text-sm font-bold text-white disabled:opacity-50">
+            {savingEmail ? 'กำลังบันทึก...' : 'บันทึกอีเมล'}
+          </button>
+        </div>
+        {emailMessage && <p role="status" className="text-sm text-stone-700">{emailMessage}</p>}
+      </form>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         

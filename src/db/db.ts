@@ -41,6 +41,17 @@ export class AppDatabase extends Dexie {
 
 export const db = new AppDatabase();
 
+export const clearPrivateBrowserData = async (): Promise<void> => {
+  await db.transaction('rw', [db.activities, db.students, db.checkInLogs,
+    db.reflections, db.systemUsers, db.auditLogs, db.retiredDemoStudents], async () => {
+      await Promise.all([
+        db.activities.clear(), db.students.clear(), db.checkInLogs.clear(),
+        db.reflections.clear(), db.systemUsers.clear(), db.auditLogs.clear(),
+        db.retiredDemoStudents.clear()
+      ]);
+    });
+};
+
 /**
  * Logs a system-wide audit event for administrative tracing and accountability
  */

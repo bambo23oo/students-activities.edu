@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpenCheck, ShieldCheck } from 'lucide-react';
 import { NPULogo } from './NPULogo';
-import { signInWithUniversity } from '../services/secureAuth';
+import { signInWithEmail, signInWithStudentId } from '../services/secureAuth';
 
 interface LoginViewProps {
   error?: string | null;
@@ -10,14 +10,20 @@ interface LoginViewProps {
 export const LoginView = ({ error }: LoginViewProps) => {
   const [isStarting, setIsStarting] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [accountType, setAccountType] = useState<'student' | 'staff'>('student');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
 
-  const handleUniversitySignIn = async () => {
+  const handleSignIn = async (event: FormEvent) => {
+    event.preventDefault();
     setIsStarting(true);
     setSignInError(null);
     try {
-      await signInWithUniversity('google');
+      if (accountType === 'student') await signInWithStudentId(identifier, password);
+      else await signInWithEmail(identifier, password);
     } catch (cause) {
       setSignInError(cause instanceof Error ? cause.message : 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง');
+    } finally {
       setIsStarting(false);
     }
   };
@@ -55,23 +61,43 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </span>
             <div>
               <h2 id="login-title" className="text-xl sm:text-2xl font-bold leading-tight">เข้าสู่ระบบ</h2>
-              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">ใช้บัญชี Google ของมหาวิทยาลัยนครพนม</p>
+              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">นักศึกษาใช้รหัสนักศึกษา เจ้าหน้าที่ใช้อีเมลบัญชีงาน</p>
             </div>
           </div>
 
-          <p className="mt-6 text-sm leading-relaxed text-[#57534E]">
-            สำหรับนักศึกษา เจ้าหน้าที่ และผู้อนุมัติกิจกรรม ระบบจะแสดงข้อมูลตามสิทธิ์ของบัญชีที่เข้าสู่ระบบ
-          </p>
+          <div className="mt-6 grid grid-cols-2 gap-2" role="group" aria-label="ประเภทบัญชี">
+            {(['student', 'staff'] as const).map(type => (
+              <button key={type} type="button" aria-pressed={accountType === type}
+                onClick={() => { setAccountType(type); setIdentifier(''); setPassword(''); setSignInError(null); }}
+                className={`min-h-11 border-2 border-[#18181B] px-4 py-2 text-sm font-semibold ${accountType === type ? 'bg-[#FACC15] text-[#18181B]' : 'bg-white text-[#57534E]'}`}>
+                {type === 'student' ? 'นักศึกษา' : 'เจ้าหน้าที่'}
+              </button>
+            ))}
+          </div>
 
-          <button
-            type="button"
-            onClick={handleUniversitySignIn}
-            disabled={isStarting}
-            className="mt-7 min-h-14 w-full inline-flex items-center justify-center gap-3 px-6 py-3 bg-[#EA580C] hover:bg-[#C2410C] disabled:opacity-60 border-2 border-[#18181B] shadow-[3px_3px_0px_0px_#18181B] text-white text-sm sm:text-base font-bold transition-colors focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"
-          >
-            <span>{isStarting ? 'กำลังเปิดหน้าลงชื่อเข้าใช้...' : 'เข้าสู่ระบบด้วย Google มหาวิทยาลัย'}</span>
-            {!isStarting && <ArrowRight className="w-5 h-5 shrink-0" aria-hidden="true" />}
-          </button>
+          <form onSubmit={handleSignIn} className="mt-5 space-y-4">
+            <div>
+              <label htmlFor="login-identifier" className="block text-sm font-semibold">{accountType === 'student' ? 'รหัสนักศึกษา 12 หลัก' : 'อีเมลเจ้าหน้าที่'}</label>
+              <input id="login-identifier" required autoComplete={accountType === 'student' ? 'username' : 'email'}
+                inputMode={accountType === 'student' ? 'numeric' : 'email'}
+                type={accountType === 'student' ? 'text' : 'email'} maxLength={accountType === 'student' ? 12 : undefined}
+                value={identifier} onChange={event => setIdentifier(event.target.value)}
+                className="mt-1 min-h-12 w-full min-w-0 border-2 border-stone-400 bg-white px-4 py-2 text-base focus:outline-4 focus:outline-offset-2 focus:outline-[#2563EB]" />
+            </div>
+            <div>
+              <label htmlFor="login-password" className="block text-sm font-semibold">รหัสผ่าน</label>
+              <input id="login-password" required type="password" autoComplete="current-password"
+                value={password} onChange={event => setPassword(event.target.value)}
+                className="mt-1 min-h-12 w-full min-w-0 border-2 border-stone-400 bg-white px-4 py-2 text-base focus:outline-4 focus:outline-offset-2 focus:outline-[#2563EB]" />
+            </div>
+            <button type="submit" disabled={isStarting}
+              className="min-h-14 w-full inline-flex items-center justify-center gap-3 px-6 py-3 bg-[#EA580C] hover:bg-[#C2410C] disabled:opacity-60 border-2 border-[#18181B] shadow-[3px_3px_0px_0px_#18181B] text-white text-base font-bold focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]">
+              <span>{isStarting ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}</span>
+              {!isStarting && <ArrowRight className="w-5 h-5 shrink-0" aria-hidden="true" />}
+            </button>
+          </form>
+
+          {accountType === 'student' && <p className="mt-4 text-sm leading-relaxed text-[#57534E]">เข้าใช้ครั้งแรกให้ใช้รหัสนักศึกษาเป็นรหัสผ่าน ระบบจะให้เปลี่ยนรหัสผ่านทันที</p>}
 
           {(signInError || error) && (
             <p role="alert" aria-live="polite" className="mt-5 border-l-4 border-rose-700 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-900">
