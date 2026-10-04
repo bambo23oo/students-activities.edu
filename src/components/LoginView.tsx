@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpenCheck, ShieldCheck } from 'lucide-react';
 import { NPULogo } from './NPULogo';
-import { requestStaffPasswordReset, signInWithEmail } from '../services/secureAuth';
+import { requestStaffPasswordReset, signInWithEmail, signInWithStudentId } from '../services/secureAuth';
 
 interface LoginViewProps {
   error?: string | null;
 }
 
 export const LoginView = ({ error }: LoginViewProps) => {
+  const [mode, setMode] = useState<'student' | 'staff'>('student');
   const [isStarting, setIsStarting] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState('');
@@ -34,7 +35,8 @@ export const LoginView = ({ error }: LoginViewProps) => {
     setIsStarting(true);
     setSignInError(null);
     try {
-      await signInWithEmail(identifier, password);
+      if (mode === 'student') await signInWithStudentId(identifier, password);
+      else await signInWithEmail(identifier, password);
     } catch (cause) {
       setSignInError(cause instanceof Error ? cause.message : 'ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง');
     } finally {
@@ -53,7 +55,7 @@ export const LoginView = ({ error }: LoginViewProps) => {
           <div className="mt-2 sm:mt-6">
             <div className="inline-flex items-center gap-2 bg-[#FACC15] border-2 border-[#18181B] px-4 py-2 text-xs sm:text-sm font-bold shadow-[3px_3px_0px_0px_#18181B]">
               <BookOpenCheck className="w-4 h-4" aria-hidden="true" />
-              ระบบเช็กอินกิจกรรมสำหรับเจ้าหน้าที่
+              {mode === 'student' ? 'สมุดบันทึกกิจกรรมสำหรับนักศึกษา' : 'ระบบเช็กอินกิจกรรมสำหรับเจ้าหน้าที่'}
             </div>
             <h1 id="system-title" className="mt-3 sm:mt-6 text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-black tracking-tight text-[#18181B]">
               สมุดบันทึกกิจกรรมดิจิทัล
@@ -75,14 +77,25 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </span>
             <div>
               <h2 id="login-title" className="text-xl sm:text-2xl font-bold leading-tight">เข้าสู่ระบบ</h2>
-              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">เจ้าหน้าที่ใช้อีเมลและรหัสผ่านที่ได้รับสิทธิ์</p>
+              <p className="mt-1 text-sm text-[#57534E] leading-relaxed">{mode === 'student' ? 'ดูเฉพาะกิจกรรมที่เช็กอินแล้ว' : 'เจ้าหน้าที่ใช้อีเมลและรหัสผ่านที่ได้รับสิทธิ์'}</p>
             </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 border-2 border-[#18181B]" role="group" aria-label="ประเภทผู้ใช้งาน">
+            {(['student', 'staff'] as const).map(value => <button key={value} type="button"
+              aria-pressed={mode === value}
+              onClick={() => { setMode(value); setIdentifier(''); setPassword(''); setSignInError(null); setResetMessage(null); }}
+              className={`min-h-11 px-4 py-2 text-sm font-bold ${mode === value ? 'bg-[#EA580C] text-white' : 'bg-white text-[#18181B]'}`}>
+              {value === 'student' ? 'นักศึกษา' : 'เจ้าหน้าที่'}
+            </button>)}
           </div>
 
           <form onSubmit={handleSignIn} className="mt-6 space-y-4">
             <div>
-              <label htmlFor="login-identifier" className="block text-sm font-semibold">อีเมลเจ้าหน้าที่</label>
-              <input id="login-identifier" required autoComplete="email" inputMode="email" type="email"
+              <label htmlFor="login-identifier" className="block text-sm font-semibold">{mode === 'student' ? 'รหัสนักศึกษา 12 หลัก' : 'อีเมลเจ้าหน้าที่'}</label>
+              <input id="login-identifier" required autoComplete={mode === 'student' ? 'username' : 'email'}
+                inputMode={mode === 'student' ? 'numeric' : 'email'} type={mode === 'student' ? 'text' : 'email'}
+                pattern={mode === 'student' ? '[0-9]{12}' : undefined} maxLength={mode === 'student' ? 12 : undefined}
                 value={identifier} onChange={event => setIdentifier(event.target.value)}
                 className="mt-1 min-h-12 w-full min-w-0 border-2 border-stone-400 bg-white px-4 py-2 text-base focus:outline-4 focus:outline-offset-2 focus:outline-[#2563EB]" />
             </div>
@@ -99,13 +112,15 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </button>
           </form>
 
-          <button type="button" onClick={handlePasswordReset} disabled={resetBusy}
+          {mode === 'staff' && <button type="button" onClick={handlePasswordReset} disabled={resetBusy}
             className="mt-4 min-h-11 w-full text-sm font-bold text-[#9A3412] underline underline-offset-4 disabled:opacity-60">
             {resetBusy ? 'กำลังส่งลิงก์...' : 'ลืมรหัสผ่าน / ตั้งรหัสผ่านใหม่'}
-          </button>
+          </button>}
           {resetMessage && <p role="status" className="mt-3 border-l-4 border-emerald-700 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{resetMessage}</p>}
 
-          <p className="mt-4 text-sm leading-relaxed text-[#57534E]">ขณะนี้เปิดเฉพาะการสแกนและบันทึกเช็กอิน หน้าบันทึกของนักศึกษาจะเปิดภายหลัง</p>
+          <p className="mt-4 text-sm leading-relaxed text-[#57534E]">{mode === 'student'
+            ? 'เข้าใช้ครั้งแรกด้วยรหัสนักศึกษาเป็นรหัสผ่าน แล้วตั้งรหัสผ่านใหม่ก่อนดูข้อมูลกิจกรรม'
+            : 'เจ้าหน้าที่สแกนและบันทึกเช็กอินให้แก่นักศึกษา'}</p>
 
           {(signInError || error) && (
             <p role="alert" aria-live="polite" className="mt-5 border-l-4 border-rose-700 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-900">

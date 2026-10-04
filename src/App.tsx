@@ -6,6 +6,8 @@ import { getPendingSyncCount, pullFromSupabase, setupRealtimeSync, stopRealtimeS
 import { LoginView } from './components/LoginView';
 import { StaffCheckinPortal } from './components/StaffCheckinPortal';
 import { StaffPasswordSetup } from './components/StaffPasswordSetup';
+import { StudentPasswordSetup } from './components/StudentPasswordSetup';
+import { StudentJournalPortal } from './components/StudentJournalPortal';
 
 export default function App() {
   const [access, setAccess] = useState<VerifiedAccess | null>(null);
@@ -107,6 +109,10 @@ export default function App() {
     }} />;
   }
   if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name} />;
+  if (access.role === 'student' && access.studentId) {
+    if (access.requiresPasswordChange) return <StudentPasswordSetup studentId={access.studentId} onLogout={logout} onComplete={() => window.location.reload()} />;
+    return <StudentJournalPortal studentId={access.studentId} studentName={access.name} onLogout={logout} />;
+  }
   return <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#F4EFE6] p-6 text-center font-['Prompt','Sarabun',sans-serif] text-[#18181B]">
     <h1 className="text-2xl font-bold">ขณะนี้เปิดเฉพาะระบบเช็กอินสำหรับเจ้าหน้าที่</h1>
     <p className="max-w-lg text-[#57534E]">ระบบบันทึกของนักศึกษาจะเปิดในระยะถัดไป ข้อมูลการเช็กอินที่เจ้าหน้าที่บันทึกไว้จะเก็บในฐานข้อมูลกลาง</p>
