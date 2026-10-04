@@ -5,6 +5,7 @@ import { pullStudentUpdates } from '../services/supabaseApi';
 import { buildStudentJournalEntries, type JournalEntry } from '../services/studentJournal';
 import { NPULogo } from './NPULogo';
 import { StudentReflectionModal } from './student/StudentReflectionModal';
+import { StudentDemoReflectionModal } from './student/StudentDemoReflectionModal';
 
 const reflectionLabel = (entry: JournalEntry): string => {
   if (entry.log.execStatus === 'approved' || entry.reflection?.status === 'approved') return 'อนุมัติแล้ว';
@@ -21,24 +22,27 @@ const formatCheckInTime = (timestamp: string): string => {
   });
 };
 
-export const StudentJournalPortal = ({ studentId, studentName, onLogout, previewEntries, staffEntries, embedded = false }: {
+export const StudentJournalPortal = ({ studentId, studentName, onLogout, previewEntries, staffEntries, embedded = false, demoInteractive = false }: {
   studentId: string;
   studentName: string;
   onLogout: () => void;
   previewEntries?: JournalEntry[];
   staffEntries?: JournalEntry[];
   embedded?: boolean;
+  demoInteractive?: boolean;
 }) => {
   const isPreview = previewEntries !== undefined;
-  const isReadOnly = isPreview || staffEntries !== undefined;
+  const usesStaticEntries = isPreview || staffEntries !== undefined;
+  const isReadOnly = usesStaticEntries && !demoInteractive;
   const [entries, setEntries] = useState<JournalEntry[]>(staffEntries ?? previewEntries ?? []);
-  const [loading, setLoading] = useState(!isReadOnly);
+  const [loading, setLoading] = useState(!usesStaticEntries);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [demoMessage, setDemoMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (isReadOnly) return;
+    if (usesStaticEntries) return;
     setRefreshing(true);
     try {
       await pullStudentUpdates(studentId);
@@ -55,10 +59,10 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isReadOnly, studentId]);
+  }, [usesStaticEntries, studentId]);
 
   useEffect(() => {
-    if (isReadOnly) return;
+    if (usesStaticEntries) return;
     void refresh();
     const onVisible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -67,7 +71,7 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(timer);
     };
-  }, [isReadOnly, refresh]);
+  }, [usesStaticEntries, refresh]);
 
   const backLabel = embedded ? 'กลับประวัติเช็กอิน' : isPreview ? 'กลับหน้าเข้าสู่ระบบ' : 'ออกจากระบบ';
 
@@ -94,7 +98,9 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
         ← {backLabel}
       </button>}
       {isPreview && <p role="status" className="mb-6 border-l-4 border-[#B45309] bg-[#FCF8ED] px-4 py-3 text-sm font-semibold leading-relaxed text-[#78350F]">
-        ตัวอย่างหน้าจอนักศึกษา · ข้อมูลสมมติสำหรับตรวจรูปแบบเท่านั้น ไม่มีข้อมูลนักศึกษาจริง และไม่สามารถบันทึกข้อมูลได้
+        {demoInteractive
+          ? 'บัญชีนักศึกษาจำลอง · ข้อมูลทุกอย่างเป็นตัวอย่าง ลองกรอก K-P-A ได้ แต่จะไม่ส่งข้อมูลหรือภาพไปยังฐานข้อมูลจริง'
+          : 'ตัวอย่างหน้าจอนักศึกษา · ข้อมูลสมมติสำหรับตรวจรูปแบบเท่านั้น ไม่มีข้อมูลนักศึกษาจริง และไม่สามารถบันทึกข้อมูลได้'}
       </p>}
       {staffEntries && <p role="status" className="mb-6 border-l-4 border-[#2563EB] bg-[#EFF6FF] px-4 py-3 text-sm font-semibold leading-relaxed text-[#1E40AF]">
         มุมมองเจ้าหน้าที่ · ข้อมูลจริงจากฐานข้อมูลกลาง · อ่านอย่างเดียว
@@ -112,17 +118,18 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
           <BookOpenCheck className="h-5 w-5 text-[#C2410C]" aria-hidden="true" />
           {loading ? 'กำลังโหลดกิจกรรม...' : `เช็กอินแล้ว ${entries.length} กิจกรรม`}
         </p>
-        {!isReadOnly && <button type="button" onClick={() => void refresh()} disabled={refreshing}
+        {!usesStaticEntries && <button type="button" onClick={() => void refresh()} disabled={refreshing}
           className="inline-flex min-h-11 items-center gap-2 border border-[#A8A29E] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50 focus-visible:outline-4 focus-visible:outline-[#2563EB]">
           <RefreshCw className="h-4 w-4" aria-hidden="true" />{refreshing ? 'กำลังอัปเดต...' : 'อัปเดตข้อมูล'}
         </button>}
       </div>
 
+      {demoMessage && <p role="status" className="mt-5 border-l-4 border-[#15803D] bg-green-50 px-4 py-3 text-sm text-green-900">{demoMessage}</p>}
       {error && <p role="alert" className="mt-5 border-l-4 border-red-700 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</p>}
       {!loading && entries.length === 0 && !error && <div className="mt-6 border border-[#E7E5E4] bg-white px-5 py-8 text-center">
         <CalendarDays className="mx-auto h-9 w-9 text-[#B45309]" aria-hidden="true" />
         <p className="mt-3 font-semibold">ยังไม่พบกิจกรรมที่เช็กอิน</p>
-        <p className="mt-2 text-sm text-[#57534E]">{isReadOnly ? 'ไม่พบรายการเช็กอินสำหรับมุมมองนี้' : 'หากเพิ่งเช็กอิน กรุณากด “อัปเดตข้อมูล” หรือติดต่อเจ้าหน้าที่กิจกรรม'}</p>
+        <p className="mt-2 text-sm text-[#57534E]">{usesStaticEntries ? 'ไม่พบรายการเช็กอินสำหรับมุมมองนี้' : 'หากเพิ่งเช็กอิน กรุณากด “อัปเดตข้อมูล” หรือติดต่อเจ้าหน้าที่กิจกรรม'}</p>
       </div>}
 
       <div className="mt-5 space-y-3">
@@ -147,8 +154,17 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
       </div>
     </main>
 
-    {!isReadOnly && <StudentReflectionModal isOpen={selectedLogId !== null} logId={selectedLogId} studentId={studentId} studentName={studentName}
+    {!usesStaticEntries && <StudentReflectionModal isOpen={selectedLogId !== null} logId={selectedLogId} studentId={studentId} studentName={studentName}
       onClose={() => setSelectedLogId(null)} onSuccess={() => void refresh()} />
     }
+    {demoInteractive && entries.filter(entry => entry.log.id === selectedLogId).map(entry => <StudentDemoReflectionModal
+      entry={entry}
+      onClose={() => setSelectedLogId(null)}
+      onSave={reflection => {
+        setEntries(current => current.map(item => item.log.id === entry.log.id ? { ...item, reflection } : item));
+        setDemoMessage(reflection.status === 'draft' ? 'บันทึกร่างตัวอย่างแล้ว ข้อมูลจะหายเมื่อปิดหน้านี้' : 'ส่ง K-P-A ตัวอย่างแล้ว ระบบจริงไม่ได้รับข้อมูลนี้');
+        setSelectedLogId(null);
+      }}
+    />)}
   </div>;
 };

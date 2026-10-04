@@ -41,9 +41,13 @@ const reflections: Reflection[] = [
 
 const previewEntries = buildStudentJournalEntries(studentId, logs, activities, reflections);
 
-export const StudentJournalPreview = () => <StudentJournalPortal
+export const StudentJournalPreview = ({ interactive = false, onLogout }: {
+  interactive?: boolean;
+  onLogout?: () => void;
+}) => <StudentJournalPortal
   studentId={studentId}
   studentName="ตัวอย่างนักศึกษา"
   previewEntries={previewEntries}
-  onLogout={() => window.location.assign('/')}
+  demoInteractive={interactive}
+  onLogout={onLogout || (() => window.location.assign('/'))}
 />;
