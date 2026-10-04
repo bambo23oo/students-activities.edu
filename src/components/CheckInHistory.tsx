@@ -114,7 +114,7 @@ export const CheckInHistory: React.FC = () => {
   if (viewingStudentId) return <StaffStudentJournalViewer studentId={viewingStudentId} onBack={() => setViewingStudentId(null)} />;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 font-sans">
+    <div className="max-w-6xl mx-auto px-2 sm:px-6 lg:px-8 py-6 space-y-6 font-['Prompt','Sarabun',sans-serif]">
       
       {/* Header Banner */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -182,8 +182,23 @@ export const CheckInHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* Table Content */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="space-y-3 md:hidden" aria-label="รายการเช็กอิน">
+        {loading && <p role="status" className="bg-white p-4 text-sm text-[#57534E]">กำลังโหลดข้อมูลการสแกน...</p>}
+        {!loading && filteredLogs.length === 0 && <p className="bg-white p-4 text-sm text-[#57534E]">ไม่พบประวัติการเช็กอินตามเงื่อนไขที่เลือก</p>}
+        {!loading && filteredLogs.map(log => <article key={log.id} className="border border-[#E7E5E4] bg-white p-4">
+          <p className="break-words font-semibold text-[#1C1917]">{log.studentName}</p>
+          <p className="mt-1 text-xs text-[#57534E]">รหัสนักศึกษา {log.studentId}</p>
+          <p className="mt-2 break-words text-sm text-[#1C1917]">{log.activityName}</p>
+          <p className="mt-1 text-xs text-[#57534E]">เช็กอิน {new Date(log.timestamp).toLocaleString('th-TH')}</p>
+          <button type="button" onClick={() => setViewingStudentId(log.studentId)}
+            className="mt-3 inline-flex min-h-11 items-center gap-2 border-2 border-[#1C1917] bg-white px-4 py-2 text-sm font-semibold focus-visible:outline-4 focus-visible:outline-[#2563EB]">
+            <Eye className="h-4 w-4" aria-hidden="true" />ดูสมุดบันทึก
+          </button>
+        </article>)}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden overflow-hidden border border-slate-200 bg-white shadow-sm md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
