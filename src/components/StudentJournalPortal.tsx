@@ -21,18 +21,21 @@ const formatCheckInTime = (timestamp: string): string => {
   });
 };
 
-export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
+export const StudentJournalPortal = ({ studentId, studentName, onLogout, previewEntries }: {
   studentId: string;
   studentName: string;
   onLogout: () => void;
+  previewEntries?: JournalEntry[];
 }) => {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const isPreview = previewEntries !== undefined;
+  const [entries, setEntries] = useState<JournalEntry[]>(previewEntries ?? []);
+  const [loading, setLoading] = useState(!isPreview);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (isPreview) return;
     setRefreshing(true);
     try {
       await pullStudentUpdates(studentId);
@@ -49,9 +52,10 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [studentId]);
+  }, [isPreview, studentId]);
 
   useEffect(() => {
+    if (isPreview) return;
     void refresh();
     const onVisible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -60,7 +64,7 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [isPreview, refresh]);
 
   return <div className="min-h-[100dvh] bg-[#FAF9F6] font-['Prompt','Sarabun',sans-serif] text-[#1C1917]">
     <header className="border-b-2 border-[#1C1917] bg-white px-4 py-3 sm:px-6">
@@ -72,16 +76,19 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
             <p className="text-xs leading-relaxed text-[#57534E]">ศูนย์ฝึกประสบการณ์วิชาชีพครู · คณะครุศาสตร์</p>
           </div>
         </div>
-        <button type="button" onClick={onLogout} aria-label="ออกจากระบบ"
+        <button type="button" onClick={onLogout} aria-label={isPreview ? 'กลับหน้าเข้าสู่ระบบ' : 'ออกจากระบบ'}
           className="inline-flex min-h-11 shrink-0 items-center gap-2 border-2 border-[#1C1917] px-4 py-2 text-sm font-semibold focus-visible:outline-4 focus-visible:outline-[#2563EB]">
-          <LogOut className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">ออกจากระบบ</span>
+          <LogOut className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{isPreview ? 'กลับหน้าเข้าสู่ระบบ' : 'ออกจากระบบ'}</span>
         </button>
       </div>
     </header>
 
     <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-9">
+      {isPreview && <p role="status" className="mb-6 border-l-4 border-[#B45309] bg-[#FCF8ED] px-4 py-3 text-sm font-semibold leading-relaxed text-[#78350F]">
+        ตัวอย่างหน้าจอนักศึกษา · ข้อมูลสมมติสำหรับตรวจรูปแบบเท่านั้น ไม่มีข้อมูลนักศึกษาจริง และไม่สามารถบันทึกข้อมูลได้
+      </p>}
       <div className="border-l-4 border-[#EA580C] pl-4">
-        <p className="text-sm text-[#57534E]">{studentName} · รหัสนักศึกษา {studentId}</p>
+        <p className="text-sm text-[#57534E]">{studentName}{!isPreview && ` · รหัสนักศึกษา ${studentId}`}</p>
         <h1 className="mt-1 text-2xl font-bold leading-tight sm:text-3xl">กิจกรรมที่เช็กอินแล้ว</h1>
         <p className="mt-2 text-sm leading-relaxed text-[#57534E]">แสดงเฉพาะกิจกรรมที่มีรายการเช็กอินของคุณ แม้เจ้าหน้าที่จะปิดรับเช็กอินแล้ว</p>
       </div>
@@ -91,10 +98,10 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
           <BookOpenCheck className="h-5 w-5 text-[#C2410C]" aria-hidden="true" />
           {loading ? 'กำลังโหลดกิจกรรม...' : `เช็กอินแล้ว ${entries.length} กิจกรรม`}
         </p>
-        <button type="button" onClick={() => void refresh()} disabled={refreshing}
+        {!isPreview && <button type="button" onClick={() => void refresh()} disabled={refreshing}
           className="inline-flex min-h-11 items-center gap-2 border border-[#A8A29E] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50 focus-visible:outline-4 focus-visible:outline-[#2563EB]">
           <RefreshCw className="h-4 w-4" aria-hidden="true" />{refreshing ? 'กำลังอัปเดต...' : 'อัปเดตข้อมูล'}
-        </button>
+        </button>}
       </div>
 
       {error && <p role="alert" className="mt-5 border-l-4 border-red-700 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</p>}
@@ -117,7 +124,7 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
               {reflectionLabel(entry)}
             </span>
           </div>
-          {(!entry.reflection || ['draft', 'rejected'].includes(entry.reflection.status)) && <button type="button"
+          {!isPreview && (!entry.reflection || ['draft', 'rejected'].includes(entry.reflection.status)) && <button type="button"
             onClick={() => setSelectedLogId(entry.log.id)}
             className="mt-4 min-h-11 border-2 border-[#1C1917] bg-[#EA580C] px-4 py-2 text-sm font-bold text-white focus-visible:outline-4 focus-visible:outline-[#2563EB]">
             {entry.reflection ? 'แก้ไขบันทึก K-P-A' : 'บันทึก K-P-A'}
@@ -126,7 +133,8 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout }: {
       </div>
     </main>
 
-    <StudentReflectionModal isOpen={selectedLogId !== null} logId={selectedLogId} studentId={studentId} studentName={studentName}
+    {!isPreview && <StudentReflectionModal isOpen={selectedLogId !== null} logId={selectedLogId} studentId={studentId} studentName={studentName}
       onClose={() => setSelectedLogId(null)} onSuccess={() => void refresh()} />
+    }
   </div>;
 };
