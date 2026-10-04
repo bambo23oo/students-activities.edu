@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, cleanCorruptedThaiRecords } from '../db/db';
+import { db } from '../db/db';
 import { Activity, CheckInLog, Student } from '../types';
 import { 
   Camera, 
@@ -132,10 +132,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   }, [selectedActivityId]);
 
   useEffect(() => {
-    // Initial cleanup of any corrupted Thai logs in IndexedDB
-    cleanCorruptedThaiRecords().then(() => {
-      loadActivities();
-    });
+    void loadActivities();
   }, []);
 
   useEffect(() => {
