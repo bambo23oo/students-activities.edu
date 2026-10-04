@@ -38,7 +38,7 @@ export const StaffPasswordSetup = ({ onComplete, onLogout }: {
           <h1 id="setup-title" className="text-xl font-bold">ตั้งรหัสผ่านเจ้าหน้าที่</h1>
         </div>
       </div>
-      <p className="mt-5 text-sm leading-relaxed text-[#57534E]">ยืนยันอีเมลจากลิงก์เชิญแล้ว กรุณาตั้งรหัสผ่านเฉพาะระบบนี้ก่อนเปิดทะเบียนและสแกนเช็กอิน</p>
+      <p className="mt-5 text-sm leading-relaxed text-[#57534E]">กรุณาตั้งรหัสผ่านเฉพาะระบบนี้ก่อนเปิดทะเบียนและสแกนเช็กอิน</p>
       <form onSubmit={submit} className="mt-5 space-y-4">
         <div>
           <label htmlFor="staff-new-password" className="block text-sm font-semibold">รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)</label>

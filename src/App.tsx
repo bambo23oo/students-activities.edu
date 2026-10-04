@@ -11,6 +11,7 @@ export default function App() {
   const [access, setAccess] = useState<VerifiedAccess | null>(null);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recoveringPassword, setRecoveringPassword] = useState(() => sessionStorage.getItem('npu_staff_password_recovery') === '1');
 
   useEffect(() => {
     let active = true;
@@ -40,14 +41,14 @@ export default function App() {
             localStorage.removeItem('npu_last_checkin');
             localStorage.setItem('npu_cache_owner', verified.userId);
           }
-          if (verified.role === 'staff' && !verified.requiresPasswordChange) {
+          if (verified.role === 'staff' && !verified.requiresPasswordChange && sessionStorage.getItem('npu_staff_password_recovery') !== '1') {
             await localReady;
             await pullFromSupabase(true);
           }
           if (active && currentRevision === revision) {
             setAccess(verified);
             setError(null);
-            if (verified.role === 'staff' && !verified.requiresPasswordChange) setupRealtimeSync();
+            if (verified.role === 'staff' && !verified.requiresPasswordChange && sessionStorage.getItem('npu_staff_password_recovery') !== '1') setupRealtimeSync();
           }
         }
       } catch (cause) {
@@ -66,7 +67,11 @@ export default function App() {
       setChecking(false);
       return;
     }
-    const { data: { subscription } } = client.auth.onAuthStateChange(() => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        sessionStorage.setItem('npu_staff_password_recovery', '1');
+        setRecoveringPassword(true);
+      }
       window.setTimeout(refresh, 0);
     });
     return () => {
@@ -86,6 +91,8 @@ export default function App() {
     await clearPrivateBrowserData();
     localStorage.removeItem('npu_last_checkin');
     localStorage.removeItem('npu_cache_owner');
+    sessionStorage.removeItem('npu_staff_password_recovery');
+    setRecoveringPassword(false);
     setAccess(null);
   };
 
@@ -93,8 +100,11 @@ export default function App() {
     return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชีเจ้าหน้าที่...</main>;
   }
   if (!access) return <LoginView error={error} />;
-  if (access.role === 'staff' && access.requiresPasswordChange) {
-    return <StaffPasswordSetup onLogout={logout} onComplete={() => window.location.reload()} />;
+  if (access.role === 'staff' && (access.requiresPasswordChange || recoveringPassword)) {
+    return <StaffPasswordSetup onLogout={logout} onComplete={() => {
+      sessionStorage.removeItem('npu_staff_password_recovery');
+      window.location.reload();
+    }} />;
   }
   if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name} />;
   return <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#F4EFE6] p-6 text-center font-['Prompt','Sarabun',sans-serif] text-[#18181B]">

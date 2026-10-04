@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, BookOpenCheck, ShieldCheck } from 'lucide-react';
 import { NPULogo } from './NPULogo';
-import { signInWithEmail } from '../services/secureAuth';
+import { requestStaffPasswordReset, signInWithEmail } from '../services/secureAuth';
 
 interface LoginViewProps {
   error?: string | null;
@@ -12,6 +12,22 @@ export const LoginView = ({ error }: LoginViewProps) => {
   const [signInError, setSignInError] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  const handlePasswordReset = async () => {
+    setResetBusy(true);
+    setSignInError(null);
+    setResetMessage(null);
+    try {
+      await requestStaffPasswordReset(identifier);
+      setResetMessage('ส่งลิงก์ตั้งรหัสผ่านแล้ว กรุณาตรวจอีเมลและโฟลเดอร์จดหมายขยะ');
+    } catch (cause) {
+      setSignInError(cause instanceof Error ? cause.message : 'ส่งลิงก์ตั้งรหัสผ่านไม่สำเร็จ');
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   const handleSignIn = async (event: FormEvent) => {
     event.preventDefault();
@@ -82,6 +98,12 @@ export const LoginView = ({ error }: LoginViewProps) => {
               {!isStarting && <ArrowRight className="w-5 h-5 shrink-0" aria-hidden="true" />}
             </button>
           </form>
+
+          <button type="button" onClick={handlePasswordReset} disabled={resetBusy}
+            className="mt-4 min-h-11 w-full text-sm font-bold text-[#9A3412] underline underline-offset-4 disabled:opacity-60">
+            {resetBusy ? 'กำลังส่งลิงก์...' : 'ลืมรหัสผ่าน / ตั้งรหัสผ่านใหม่'}
+          </button>
+          {resetMessage && <p role="status" className="mt-3 border-l-4 border-emerald-700 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{resetMessage}</p>}
 
           <p className="mt-4 text-sm leading-relaxed text-[#57534E]">ขณะนี้เปิดเฉพาะการสแกนและบันทึกเช็กอิน หน้าบันทึกของนักศึกษาจะเปิดภายหลัง</p>
 

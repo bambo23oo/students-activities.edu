@@ -107,6 +107,21 @@ export const setInvitedStaffPassword = async (newPassword: string): Promise<void
   if (error) throw new Error('ตั้งรหัสผ่านไม่สำเร็จ กรุณาลองอีกครั้ง');
 };
 
+export const requestStaffPasswordReset = async (email: string): Promise<void> => {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error('กรุณากรอกอีเมลเจ้าหน้าที่ก่อนขอลิงก์ตั้งรหัสผ่าน');
+  }
+  const client = requireClient();
+  const { error } = await client.auth.resetPasswordForEmail(normalized, {
+    redirectTo: window.location.origin
+  });
+  if (error) {
+    if (error.status === 429) throw new Error('ส่งอีเมลถี่เกินไป กรุณารอสักครู่แล้วลองใหม่');
+    throw new Error('ส่งลิงก์ตั้งรหัสผ่านไม่สำเร็จ กรุณาลองใหม่หรือติดต่อเจ้าหน้าที่');
+  }
+};
+
 export const saveUniversityEmail = async (studentId: string, email: string): Promise<void> => {
   const normalized = email.trim().toLowerCase();
   if (!/^[^\s@]+@npu\.ac\.th$/.test(normalized)) {

@@ -35,7 +35,7 @@ const emptyActivityForm = {
   originalSchedule: '', newSchedule: '', duration: '', note: ''
 };
 
-export const ActivityManager: React.FC = () => {
+export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ initialCreateOpen = false }) => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedCohort, setSelectedCohort] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -50,7 +50,7 @@ export const ActivityManager: React.FC = () => {
   const [newActivity, setNewActivity] = useState(emptyActivityForm);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(initialCreateOpen);
 
   // Set of real faculty activity IDs
   const realIds = React.useMemo(() => new Set(REAL_FACULTY_ACTIVITIES.map(a => a.id)), []);
@@ -492,9 +492,10 @@ export const ActivityManager: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block font-bold text-stone-700 mb-1">วันที่เริ่ม</label>
+                <label className="block font-bold text-stone-700 mb-1">วันที่เริ่ม *</label>
                 <input 
                   type="date" 
+                  required
                   value={newActivity.date}
                   onChange={(e) => setNewActivity({...newActivity, date: e.target.value})}
                   className="w-full px-3 py-2 bg-stone-50 border-2 border-stone-200 rounded-xl outline-none font-semibold"
