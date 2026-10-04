@@ -8,7 +8,8 @@ interface LoginViewProps {
 }
 
 export const LoginView = ({ error }: LoginViewProps) => {
-  const [mode, setMode] = useState<'student' | 'staff'>('student');
+  const studentLoginEnabled = (import.meta as any).env?.VITE_STUDENT_LOGIN_ENABLED === 'true';
+  const [mode, setMode] = useState<'student' | 'staff'>('staff');
   const [isStarting, setIsStarting] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState('');
@@ -81,14 +82,14 @@ export const LoginView = ({ error }: LoginViewProps) => {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 border-2 border-[#18181B]" role="group" aria-label="ประเภทผู้ใช้งาน">
+          {studentLoginEnabled && <div className="mt-5 grid grid-cols-2 border-2 border-[#18181B]" role="group" aria-label="ประเภทผู้ใช้งาน">
             {(['student', 'staff'] as const).map(value => <button key={value} type="button"
               aria-pressed={mode === value}
               onClick={() => { setMode(value); setIdentifier(''); setPassword(''); setSignInError(null); setResetMessage(null); }}
               className={`min-h-11 px-4 py-2 text-sm font-bold ${mode === value ? 'bg-[#EA580C] text-white' : 'bg-white text-[#18181B]'}`}>
               {value === 'student' ? 'นักศึกษา' : 'เจ้าหน้าที่'}
             </button>)}
-          </div>
+          </div>}
 
           <form onSubmit={handleSignIn} className="mt-6 space-y-4">
             <div>
@@ -120,7 +121,7 @@ export const LoginView = ({ error }: LoginViewProps) => {
 
           <p className="mt-4 text-sm leading-relaxed text-[#57534E]">{mode === 'student'
             ? 'เข้าใช้ครั้งแรกด้วยรหัสนักศึกษาเป็นรหัสผ่าน แล้วตั้งรหัสผ่านใหม่ก่อนดูข้อมูลกิจกรรม'
-            : 'เจ้าหน้าที่สแกนและบันทึกเช็กอินให้แก่นักศึกษา'}</p>
+            : 'เจ้าหน้าที่ดูสมุดบันทึกจากข้อมูลจริงได้ที่ “ประวัติ” → “ดูสมุด”'}</p>
 
           {(signInError || error) && (
             <p role="alert" aria-live="polite" className="mt-5 border-l-4 border-rose-700 bg-rose-50 px-4 py-3 text-sm leading-relaxed text-rose-900">
