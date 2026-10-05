@@ -8,6 +8,33 @@ export const AdminStudentPasswordReset = () => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [provisionBusy, setProvisionBusy] = useState(false);
+  const [provisionProgress, setProvisionProgress] = useState('');
+
+  const provision = async () => {
+    if (!window.confirm('ยืนยันสร้างบัญชีนักศึกษาทั้งทะเบียนด้วยรหัสนักศึกษาเป็นรหัสผ่านแรกเข้า? ผู้ที่ทราบรหัสนักศึกษาอาจเข้าสู่บัญชีก่อนเจ้าของ จึงควรแจ้งให้นักศึกษาเปลี่ยนรหัสทันที')) return;
+    setProvisionBusy(true); setError(''); setProvisionProgress('กำลังเริ่มสร้างบัญชี...');
+    let startAfter = '';
+    let processed = 0;
+    let created = 0;
+    try {
+      for (let batch = 0; batch < 100; batch++) {
+        const { data, error: provisionError } = await getSupabaseClient()!.functions
+          .invoke('provision-students-batch', { body: { startAfter } });
+        if (provisionError || !data || typeof data.processed !== 'number') {
+          throw new Error('สร้างบัญชีบางส่วนไม่สำเร็จ สามารถกดเริ่มใหม่ได้ ระบบจะข้ามบัญชีที่สร้างแล้ว');
+        }
+        processed += data.processed;
+        created += data.created || 0;
+        setProvisionProgress(`ตรวจแล้ว ${processed} คน · สร้างใหม่ ${created} บัญชี · เช็กอินเดิม ${data.checkIns} รายการ`);
+        if (data.finished) return;
+        startAfter = data.nextCursor;
+      }
+      throw new Error('ยังตรวจทะเบียนไม่ครบ กรุณากดเริ่มใหม่เพื่อดำเนินต่อ');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'สร้างบัญชีไม่สำเร็จ');
+    } finally { setProvisionBusy(false); }
+  };
 
   const inspect = async (event: FormEvent) => {
     event.preventDefault();
@@ -35,6 +62,15 @@ export const AdminStudentPasswordReset = () => {
   };
 
   return <section className="mx-auto max-w-xl bg-white p-5 font-['Prompt','Sarabun',sans-serif] text-[#1C1917] shadow-[4px_4px_0px_0px_#1C1917] ring-2 ring-[#1C1917] sm:p-8" aria-labelledby="reset-title">
+    <div className="mb-7 border-b border-[#E7E5E4] pb-6">
+      <h2 className="text-lg font-bold">เปิดบัญชีนักศึกษาจากทะเบียน</h2>
+      <p className="mt-2 text-sm leading-relaxed text-[#57534E]">สำหรับผู้ดูแลเท่านั้น ระบบสร้างเฉพาะบัญชีที่ยังไม่มี และไม่แก้ข้อมูลเช็กอินเดิม</p>
+      <button type="button" onClick={() => void provision()} disabled={provisionBusy}
+        className="mt-4 min-h-12 border-2 border-[#1C1917] bg-[#F59E0B] px-6 py-3 text-sm font-bold disabled:opacity-50">
+        {provisionBusy ? 'กำลังสร้างบัญชี...' : 'สร้างบัญชีจากทะเบียน'}
+      </button>
+      {provisionProgress && <p role="status" className="mt-3 text-sm text-[#57534E]">{provisionProgress}</p>}
+    </div>
     <div className="flex items-center gap-3">
       <KeyRound className="h-7 w-7 text-[#C2410C]" aria-hidden="true" />
       <h1 id="reset-title" className="text-xl font-bold">รีเซ็ตรหัสผ่านนักศึกษา</h1>
