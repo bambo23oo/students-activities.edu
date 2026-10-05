@@ -89,9 +89,9 @@ create or replace function private.guard_student_roster_update()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if (select private.onboarding_student_id()) = old.id then
-    if (to_jsonb(new) - 'name' - 'prefix' - 'first_name' - 'last_name' - 'major' - 'year')
+    if (to_jsonb(new) - 'name' - 'prefix' - 'first_name' - 'last_name' - 'faculty' - 'major' - 'year')
        is distinct from
-       (to_jsonb(old) - 'name' - 'prefix' - 'first_name' - 'last_name' - 'major' - 'year') then
+       (to_jsonb(old) - 'name' - 'prefix' - 'first_name' - 'last_name' - 'faculty' - 'major' - 'year') then
       raise exception 'Only own profile fields may be changed';
     end if;
     if trim(coalesce(new.prefix, '')) = '' or trim(coalesce(new.first_name, '')) = ''
@@ -99,6 +99,16 @@ begin
        or new.year not between 1 and 6
        or new.name is distinct from new.prefix || new.first_name || ' ' || new.last_name then
       raise exception 'Required student profile fields are incomplete';
+    end if;
+    if not coalesce((
+      (new.faculty = 'คณะครุศาสตร์' and new.major = any(array[
+        'สาขาวิชาการศึกษาปฐมวัย', 'สาขาวิชาการประถมศึกษา', 'สาขาวิชาคอมพิวเตอร์ศึกษา',
+        'สาขาวิชาวิทยาศาสตร์', 'สาขาวิชาภาษาอังกฤษ', 'สาขาวิชาคณิตศาสตรศึกษา',
+        'สาขาวิชาสังคมศึกษา', 'สาขาวิชาภาษาไทย', 'สาขาวิชาดนตรีศึกษา']))
+      or (new.faculty = 'คณะวิทยาศาสตร์' and new.major = any(array[
+        'สาขาวิชาชีววิทยา', 'สาขาวิชาเคมี', 'สาขาวิชาฟิสิกส์']))
+    ), false) then
+      raise exception 'Major must match the selected faculty';
     end if;
   end if;
   return new;
@@ -173,6 +183,7 @@ begin
       and trim(coalesce(s.first_name, '')) <> ''
       and trim(coalesce(s.last_name, '')) <> ''
       and trim(coalesce(s.major, '')) <> ''
+      and s.faculty in ('คณะครุศาสตร์', 'คณะวิทยาศาสตร์')
       and s.year between 1 and 6
       and c.university_email ~* '^[A-Z0-9._%+\-]+@npu[.]ac[.]th$'
   ) then raise exception 'Required student profile fields are incomplete'; end if;

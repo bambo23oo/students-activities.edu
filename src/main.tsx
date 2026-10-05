@@ -12,7 +12,7 @@ const showStudentDemo = params.get('student-demo') === '1';
 const showOnboardingPreview = params.get('student-onboarding-preview') === '1';
 const onboardingDemoProfile = {
   id: '690000000001', prefix: 'นางสาว', firstName: 'ตัวอย่าง', lastName: 'นักศึกษา',
-  major: 'สาขาวิชาการศึกษาปฐมวัย', year: 1, universityEmail: '', photoPath: '', photoUrl: ''
+  faculty: 'คณะครุศาสตร์', major: 'สาขาวิชาการศึกษาปฐมวัย', year: 1, universityEmail: '', photoPath: '', photoUrl: ''
 };
 
 createRoot(document.getElementById('root')!).render(

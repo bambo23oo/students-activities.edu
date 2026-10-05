@@ -1,11 +1,13 @@
 import imageCompression from 'browser-image-compression';
 import { getSupabaseClient } from '../lib/supabase';
+import { FACULTIES, isValidMajorForFaculty } from '../data/majors';
 
 export interface StudentOnboardingProfile {
   id: string;
   prefix: string;
   firstName: string;
   lastName: string;
+  faculty: string;
   major: string;
   year: number | null;
   universityEmail: string;
@@ -30,7 +32,7 @@ export const splitRosterName = (name: string) => {
 export const loadStudentOnboardingProfile = async (studentId: string): Promise<StudentOnboardingProfile> => {
   const supabase = client();
   const [{ data: student, error: studentError }, { data: contact, error: contactError }] = await Promise.all([
-    supabase.from('students').select('id,name,prefix,first_name,last_name,major,year').eq('id', studentId).single(),
+    supabase.from('students').select('id,name,prefix,first_name,last_name,faculty,major,year').eq('id', studentId).single(),
     supabase.from('student_contact').select('university_email,profile_photo_path').eq('student_id', studentId).maybeSingle()
   ]);
   if (studentError || !student || contactError) throw new Error('โหลดข้อมูลทะเบียนไม่สำเร็จ กรุณาลองใหม่หรือติดต่อเจ้าหน้าที่');
@@ -46,6 +48,7 @@ export const loadStudentOnboardingProfile = async (studentId: string): Promise<S
     prefix: student.prefix || parsed.prefix,
     firstName: student.first_name || parsed.firstName,
     lastName: student.last_name || parsed.lastName,
+    faculty: student.faculty || '',
     major: student.major || '',
     year: student.year || null,
     universityEmail: contact?.university_email || '',
@@ -68,8 +71,11 @@ export const validateStudentOnboardingProfile = (
   photo: File | null
 ): void => {
   if (!profile.prefix.trim() || !profile.firstName.trim() || !profile.lastName.trim()
-    || !profile.major.trim() || !profile.year || profile.year < 1 || profile.year > 6) {
+    || !profile.faculty.trim() || !profile.major.trim() || !profile.year || profile.year < 1 || profile.year > 6) {
     throw new Error('กรุณาตรวจและกรอกข้อมูลนักศึกษาให้ครบทุกช่อง');
+  }
+  if (!FACULTIES.includes(profile.faculty) || !isValidMajorForFaculty(profile.faculty, profile.major)) {
+    throw new Error('กรุณาเลือกสาขาวิชาที่ตรงกับคณะจากรายการ');
   }
   if (!/^[^\s@]+@npu\.ac\.th$/.test(profile.universityEmail.trim().toLowerCase())) {
     throw new Error('กรุณากรอกอีเมลมหาวิทยาลัยที่ลงท้ายด้วย @npu.ac.th');
@@ -86,6 +92,7 @@ export const saveStudentOnboardingProfile = async (
   const prefix = profile.prefix.trim();
   const firstName = profile.firstName.trim().replace(/\s+/g, ' ');
   const lastName = profile.lastName.trim().replace(/\s+/g, ' ');
+  const faculty = profile.faculty.trim();
   const major = profile.major.trim();
   const universityEmail = profile.universityEmail.trim().toLowerCase();
   validateStudentOnboardingProfile(profile, photo);
@@ -107,7 +114,7 @@ export const saveStudentOnboardingProfile = async (
 
   const { data: saved, error: studentError } = await supabase.from('students').update({
     prefix, first_name: firstName, last_name: lastName,
-    name: `${prefix}${firstName} ${lastName}`, major, year: profile.year
+    name: `${prefix}${firstName} ${lastName}`, faculty, major, year: profile.year
   }).eq('id', studentId).select('id').single();
   if (studentError || !saved) throw new Error('บันทึกข้อมูลทะเบียนไม่สำเร็จ กรุณาลองใหม่');
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Camera, CheckCircle2, LogOut } from 'lucide-react';
 import { NPULogo } from './NPULogo';
+import { FACULTIES, getMajorsForFaculty, isValidMajorForFaculty } from '../data/majors';
 import {
   loadStudentOnboardingProfile, saveStudentOnboardingProfile, validateStudentPhoto, validateStudentOnboardingProfile,
   type StudentOnboardingProfile
@@ -84,7 +85,7 @@ export const StudentOnboarding = ({ studentId, onComplete, onLogout, onCancel, i
       </header>
 
       <div className="mt-5 border-l-4 border-[#2563EB] bg-[#EFF6FF] px-4 py-3 text-sm leading-relaxed text-[#1E40AF]">
-        ข้อมูลชื่อและสาขาดึงจากทะเบียนนักศึกษา กรุณาตรวจความถูกต้องก่อนบันทึก หากแก้ไข ระบบจะอัปเดตทะเบียนกลางด้วย
+        ข้อมูลชื่อ คณะ และสาขาดึงจากทะเบียนนักศึกษา กรุณาตรวจความถูกต้องก่อนบันทึก หากแก้ไข ระบบจะอัปเดตทะเบียนกลางด้วย
       </div>
       {demoProfile && <p role="status" className="mt-4 border-l-4 border-[#B45309] bg-[#FCF8ED] px-4 py-3 text-sm text-[#78350F]">
         ตัวอย่างฟอร์มเท่านั้น · ข้อมูลและรูปภาพที่กรอกจะไม่ส่งไปยังฐานข้อมูลจริง
@@ -116,10 +117,25 @@ export const StudentOnboarding = ({ studentId, onComplete, onLogout, onCancel, i
             <label htmlFor="onboard-last" className={label}>นามสกุล <span className="text-red-700">*</span></label>
             <input id="onboard-last" required value={profile.lastName} onChange={event => patch({ lastName: event.target.value })} className={field} />
           </div>
+          <div>
+            <label htmlFor="onboard-faculty" className={label}>คณะ <span className="text-red-700">*</span></label>
+            <select id="onboard-faculty" required value={profile.faculty} onChange={event => {
+              const faculty = event.target.value;
+              patch({ faculty, major: isValidMajorForFaculty(faculty, profile.major) ? profile.major : '' });
+            }} className={field}>
+              <option value="">เลือกคณะ</option>
+              {FACULTIES.map(faculty => <option key={faculty} value={faculty}>{faculty}</option>)}
+            </select>
+          </div>
           <div className="grid gap-4 sm:grid-cols-[1.5fr_0.5fr]">
             <div>
               <label htmlFor="onboard-major" className={label}>สาขาวิชา <span className="text-red-700">*</span></label>
-              <input id="onboard-major" required value={profile.major} onChange={event => patch({ major: event.target.value })} className={field} />
+              <select id="onboard-major" required value={profile.major} disabled={!profile.faculty}
+                onChange={event => patch({ major: event.target.value })} className={field}>
+                <option value="">{profile.faculty ? 'เลือกสาขาวิชา' : 'เลือกคณะก่อน'}</option>
+                {getMajorsForFaculty(profile.faculty).map(major =>
+                  <option key={major.id} value={major.name}>{major.name}</option>)}
+              </select>
             </div>
             <div>
               <label htmlFor="onboard-year" className={label}>ชั้นปี <span className="text-red-700">*</span></label>
