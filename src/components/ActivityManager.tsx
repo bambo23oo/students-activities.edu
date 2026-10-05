@@ -46,6 +46,7 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
   const [selectedActivityForPoster, setSelectedActivityForPoster] = useState<Activity | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const [newActivity, setNewActivity] = useState(emptyActivityForm);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -158,7 +159,9 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
       duration: activity.duration || '', note: activity.note || ''
     });
     setIsFormOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // StaffCheckinPortal scrolls inside <main>, so window.scrollTo leaves the
+    // newly opened form out of view on phones and shorter desktop screens.
+    window.requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   // Excel / CSV File Import Handler
@@ -391,13 +394,18 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
 
       {/* Add New Activity Collapsible Form */}
       {isFormOpen && (
-        <div className="bg-white p-6 rounded-2xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]">
+        <div ref={formRef} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-black text-[#18181B] flex items-center gap-2">
               {editingActivity ? <Pencil className="w-5 h-5 text-[#EA580C]" /> : <Plus className="w-5 h-5 text-[#EA580C]" />}
               {editingActivity ? `แก้ไขกิจกรรม ${editingActivity.id}` : 'เพิ่มกิจกรรมการเรียนรู้ / ฝึกประสบการณ์'}
             </h3>
           </div>
+          {notification?.type === 'error' && (
+            <p role="alert" className="mb-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+              {notification.message}
+            </p>
+          )}
 
           <form onSubmit={handleAddActivity} className="space-y-4 text-xs">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
