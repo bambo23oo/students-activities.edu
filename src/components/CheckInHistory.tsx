@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { db, cleanCorruptedThaiRecords } from '../db/db';
+import { db } from '../db/db';
 import { Activity, Student, CheckInLog } from '../types';
 import { 
   Search, 
   Download, 
-  Trash2, 
   Clock, 
   Users, 
   CreditCard, 
@@ -15,10 +14,9 @@ import {
   CheckCircle2,
   Calendar,
   AlertCircle,
-  Sparkles,
-  ShieldCheck
+  Eye
 } from 'lucide-react';
-import { ConfirmModal } from './ConfirmModal';
+import { StaffStudentJournalViewer } from './StaffStudentJournalViewer';
 
 export const CheckInHistory: React.FC = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -26,14 +24,10 @@ export const CheckInHistory: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [deleteTargetLog, setDeleteTargetLog] = useState<any | null>(null);
-  const [cleanedToast, setCleanedToast] = useState<boolean>(false);
+  const [viewingStudentId, setViewingStudentId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initial cleanup on mount
-    cleanCorruptedThaiRecords().then(() => {
-      loadData();
-    });
+    void loadData();
   }, [selectedActivityId]);
 
   const loadData = async () => {
@@ -83,14 +77,6 @@ export const CheckInHistory: React.FC = () => {
     }
   };
 
-  const handleManualCleanData = async () => {
-    setLoading(true);
-    await cleanCorruptedThaiRecords();
-    await loadData();
-    setCleanedToast(true);
-    setTimeout(() => setCleanedToast(false), 3000);
-  };
-
   const filteredLogs = logs.filter(l => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -102,17 +88,6 @@ export const CheckInHistory: React.FC = () => {
       l.faculty.toLowerCase().includes(q)
     );
   });
-
-  const handleDeleteLog = async () => {
-    if (!deleteTargetLog) return;
-    try {
-      await db.checkInLogs.delete(deleteTargetLog.id);
-      setDeleteTargetLog(null);
-      await loadData();
-    } catch (err) {
-      console.error('Failed to delete log:', err);
-    }
-  };
 
   const handleExportCSV = () => {
     if (filteredLogs.length === 0) {
@@ -136,8 +111,10 @@ export const CheckInHistory: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  if (viewingStudentId) return <StaffStudentJournalViewer studentId={viewingStudentId} onBack={() => setViewingStudentId(null)} />;
+
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 font-sans">
+    <div className="max-w-6xl mx-auto px-2 sm:px-6 lg:px-8 py-6 space-y-6 font-['Prompt','Sarabun',sans-serif]">
       
       {/* Header Banner */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -156,14 +133,6 @@ export const CheckInHistory: React.FC = () => {
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           <button
-            onClick={handleManualCleanData}
-            className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
-            title="ล้างข้อมูลซ้ำซ้อนและแก้ไขรหัสภาษาไทย"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span>ทำความสะอาดข้อมูล</span>
-          </button>
-          <button
             onClick={loadData}
             className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
             title="รีเฟรชข้อมูล"
@@ -179,14 +148,6 @@ export const CheckInHistory: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Cleaned Alert Toast */}
-      {cleanedToast && (
-        <div className="p-3.5 bg-emerald-600 text-white rounded-2xl shadow-lg flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
-          <ShieldCheck className="w-4 h-4 text-emerald-200" />
-          <span>ระบบตรวจสอบและทำความสะอาดข้อมูลซ้ำซ้อน / แปลงรหัสภาษาไทยเรียบร้อยแล้ว</span>
-        </div>
-      )}
 
       {/* Filter Controls */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -221,8 +182,23 @@ export const CheckInHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* Table Content */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="space-y-3 md:hidden" aria-label="รายการเช็กอิน">
+        {loading && <p role="status" className="bg-white p-4 text-sm text-[#57534E]">กำลังโหลดข้อมูลการสแกน...</p>}
+        {!loading && filteredLogs.length === 0 && <p className="bg-white p-4 text-sm text-[#57534E]">ไม่พบประวัติการเช็กอินตามเงื่อนไขที่เลือก</p>}
+        {!loading && filteredLogs.map(log => <article key={log.id} className="border border-[#E7E5E4] bg-white p-4">
+          <p className="break-words font-semibold text-[#1C1917]">{log.studentName}</p>
+          <p className="mt-1 text-xs text-[#57534E]">รหัสนักศึกษา {log.studentId}</p>
+          <p className="mt-2 break-words text-sm text-[#1C1917]">{log.activityName}</p>
+          <p className="mt-1 text-xs text-[#57534E]">เช็กอิน {new Date(log.timestamp).toLocaleString('th-TH')}</p>
+          <button type="button" onClick={() => setViewingStudentId(log.studentId)}
+            className="mt-3 inline-flex min-h-11 items-center gap-2 border-2 border-[#1C1917] bg-white px-4 py-2 text-sm font-semibold focus-visible:outline-4 focus-visible:outline-[#2563EB]">
+            <Eye className="h-4 w-4" aria-hidden="true" />ดูสมุดบันทึก
+          </button>
+        </article>)}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden overflow-hidden border border-slate-200 bg-white shadow-sm md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -297,12 +273,10 @@ export const CheckInHistory: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => setDeleteTargetLog(log)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                        title="ลบรายการเช็คอินนี้"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
+                      <button type="button" onClick={() => setViewingStudentId(log.studentId)}
+                        className="inline-flex min-h-11 items-center gap-2 border border-[#1C1917] bg-white px-4 py-2 text-xs font-semibold text-[#1C1917] focus-visible:outline-4 focus-visible:outline-[#2563EB]"
+                        aria-label={`ดูสมุดบันทึกของ ${log.studentName}`}>
+                        <Eye className="h-4 w-4" aria-hidden="true" />ดูสมุด
                       </button>
                     </td>
                   </tr>
@@ -312,18 +286,6 @@ export const CheckInHistory: React.FC = () => {
           </table>
         </div>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        isOpen={!!deleteTargetLog}
-        onClose={() => setDeleteTargetLog(null)}
-        onConfirm={handleDeleteLog}
-        title="ยืนยันการลบรายการเช็คอิน"
-        message={`คุณต้องการลบข้อมูลการเช็คอินของ ${deleteTargetLog?.studentName} (${deleteTargetLog?.studentId}) ในกิจกรรม "${deleteTargetLog?.activityName}" หรือไม่?`}
-        confirmText="ลบข้อมูล"
-        cancelText="ยกเลิก"
-        type="danger"
-      />
 
     </div>
   );

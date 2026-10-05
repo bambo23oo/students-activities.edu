@@ -20,8 +20,9 @@ export const FACULTY_OF_EDUCATION_MAJORS: MajorOption[] = [
 ];
 
 export const FACULTY_OF_SCIENCE_MAJORS: MajorOption[] = [
-  { id: 'sci-phy', name: 'สาขาวิชาฟิสิกส์ (ค.บ.)', shortName: 'ฟิสิกส์ (คบ.)', faculty: 'คณะวิทยาศาสตร์', degree: 'ค.บ.' },
-  { id: 'sci-bio', name: 'สาขาวิชาชีววิทยา (ค.บ.)', shortName: 'ชีววิทยา (คบ.)', faculty: 'คณะวิทยาศาสตร์', degree: 'ค.บ.' }
+  { id: 'sci-bio', name: 'สาขาวิชาชีววิทยา', shortName: 'ชีววิทยา', faculty: 'คณะวิทยาศาสตร์' },
+  { id: 'sci-chem', name: 'สาขาวิชาเคมี', shortName: 'เคมี', faculty: 'คณะวิทยาศาสตร์' },
+  { id: 'sci-phy', name: 'สาขาวิชาฟิสิกส์', shortName: 'ฟิสิกส์', faculty: 'คณะวิทยาศาสตร์' }
 ];
 
 export const OTHER_NPU_MAJORS: MajorOption[] = FACULTY_OF_SCIENCE_MAJORS;
@@ -36,6 +37,12 @@ export const FACULTIES = [
   'คณะวิทยาศาสตร์'
 ];
 
+export const getMajorsForFaculty = (faculty: string): MajorOption[] =>
+  ALL_STANDARD_MAJORS.filter(major => major.faculty === faculty);
+
+export const isValidMajorForFaculty = (faculty: string, majorName: string): boolean =>
+  getMajorsForFaculty(faculty).some(major => major.name === majorName);
+
 /**
  * Checks whether a major belongs to Faculty of Science
  */
@@ -45,8 +52,10 @@ export const isScienceMajor = (majorName?: string | null): boolean => {
   return (
     clean.includes('ฟิสิกส์') ||
     clean.includes('ชีววิทยา') ||
+    clean.includes('เคมี') ||
     clean.includes('physics') ||
-    clean.includes('biology')
+    clean.includes('biology') ||
+    clean.includes('chemistry')
   );
 };
 
