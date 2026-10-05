@@ -8,6 +8,8 @@ export interface VerifiedAccess {
   role: Exclude<UserRole, 'none'>;
   studentId?: string;
   requiresPasswordChange: boolean;
+  requiresOnboarding: boolean;
+  canResetStudentPassword: boolean;
   accessToken: string;
 }
 
@@ -44,6 +46,19 @@ export const getVerifiedAccess = async (): Promise<VerifiedAccess | null> => {
   if (!access || !['student', 'staff', 'approver'].includes(access.role)) return null;
   if (access.role === 'student' && !access.student_id) return null;
   const requiresPasswordChange = access.password_rotated === false;
+  let requiresOnboarding = false;
+  let canResetStudentPassword = false;
+  if (access.role === 'student') {
+    const { data: onboarding, error: onboardingError } = await client.from('user_access')
+      .select('onboarding_completed').eq('user_id', user.id).maybeSingle();
+    // A missing migration must never grant journal access to a student.
+    requiresOnboarding = Boolean(onboardingError || onboarding?.onboarding_completed !== true);
+  }
+  if (access.role === 'staff') {
+    const { data: admin } = await client.from('user_access')
+      .select('can_reset_student_password').eq('user_id', user.id).maybeSingle();
+    canResetStudentPassword = admin?.can_reset_student_password === true;
+  }
 
   const { data: { session } } = await client.auth.getSession();
   if (!session?.access_token) return null;
@@ -66,6 +81,8 @@ export const getVerifiedAccess = async (): Promise<VerifiedAccess | null> => {
     role: access.role,
     studentId: access.student_id || undefined,
     requiresPasswordChange,
+    requiresOnboarding,
+    canResetStudentPassword,
     accessToken: session.access_token
   };
 };

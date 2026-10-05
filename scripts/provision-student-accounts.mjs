@@ -87,7 +87,9 @@ for (const [index, id] of pending.entries()) {
     user_id: user.id,
     role: 'student',
     student_id: id,
-    password_rotated: false
+    password_rotated: false,
+    onboarding_completed: false,
+    password_reset_pending: false
   });
   if (error) failures.push(`${id}: role mapping failed: ${error.message}`);
   if ((index + 1) % 100 === 0) {

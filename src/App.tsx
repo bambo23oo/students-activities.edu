@@ -8,12 +8,14 @@ import { StaffCheckinPortal } from './components/StaffCheckinPortal';
 import { StaffPasswordSetup } from './components/StaffPasswordSetup';
 import { StudentPasswordSetup } from './components/StudentPasswordSetup';
 import { StudentJournalPortal } from './components/StudentJournalPortal';
+import { StudentOnboarding } from './components/StudentOnboarding';
 
 export default function App() {
   const [access, setAccess] = useState<VerifiedAccess | null>(null);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recoveringPassword, setRecoveringPassword] = useState(() => sessionStorage.getItem('npu_staff_password_recovery') === '1');
+  const [editingStudentProfile, setEditingStudentProfile] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -99,7 +101,7 @@ export default function App() {
   };
 
   if (checking) {
-    return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชีเจ้าหน้าที่...</main>;
+    return <main className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-6 font-['Prompt','Sarabun',sans-serif] text-[#0F172A]" role="status">กำลังตรวจสอบบัญชี...</main>;
   }
   if (!access) return <LoginView error={error} />;
   if (access.role === 'staff' && (access.requiresPasswordChange || recoveringPassword)) {
@@ -108,10 +110,16 @@ export default function App() {
       window.location.reload();
     }} />;
   }
-  if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name} />;
+  if (access.role === 'staff') return <StaffCheckinPortal onLogout={logout} userName={access.name}
+    canResetStudentPassword={access.canResetStudentPassword} />;
   if (access.role === 'student' && access.studentId) {
     if (access.requiresPasswordChange) return <StudentPasswordSetup studentId={access.studentId} onLogout={logout} onComplete={() => window.location.reload()} />;
-    return <StudentJournalPortal studentId={access.studentId} studentName={access.name} onLogout={logout} />;
+    if (access.requiresOnboarding || editingStudentProfile) return <StudentOnboarding studentId={access.studentId}
+      isEditing={editingStudentProfile} onLogout={logout}
+      onCancel={editingStudentProfile ? () => setEditingStudentProfile(false) : undefined}
+      onComplete={() => window.location.reload()} />;
+    return <StudentJournalPortal studentId={access.studentId} studentName={access.name}
+      onLogout={logout} onEditProfile={() => setEditingStudentProfile(true)} />;
   }
   return <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#F4EFE6] p-6 text-center font-['Prompt','Sarabun',sans-serif] text-[#18181B]">
     <h1 className="text-2xl font-bold">ขณะนี้เปิดเฉพาะระบบเช็กอินสำหรับเจ้าหน้าที่</h1>

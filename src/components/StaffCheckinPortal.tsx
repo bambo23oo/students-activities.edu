@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
-import { CalendarDays, ClipboardList, LogOut, Plus, ScanLine } from 'lucide-react';
+import { CalendarDays, ClipboardList, KeyRound, LogOut, Plus, ScanLine } from 'lucide-react';
 import { NPULogo } from './NPULogo';
 import { StaffScanner } from './StaffScanner';
 import { CheckInHistory } from './CheckInHistory';
 import { ActivityManager } from './ActivityManager';
+import { AdminStudentPasswordReset } from './admin/AdminStudentPasswordReset';
 
-type StaffTab = 'scanner' | 'history' | 'activities' | 'create';
+type StaffTab = 'scanner' | 'history' | 'activities' | 'create' | 'reset';
 
 const tabs = [
   { id: 'scanner', label: 'สแกนเช็กอิน', icon: ScanLine },
@@ -14,9 +15,10 @@ const tabs = [
   { id: 'create', label: 'เพิ่มกิจกรรม', icon: Plus }
 ] as const;
 
-export const StaffCheckinPortal = ({ userName, onLogout }: {
+export const StaffCheckinPortal = ({ userName, onLogout, canResetStudentPassword }: {
   userName: string;
   onLogout: () => void;
+  canResetStudentPassword: boolean;
 }) => {
   const [activeTab, setActiveTab] = useState<StaffTab>('scanner');
   const mainRef = useRef<HTMLElement>(null);
@@ -42,8 +44,8 @@ export const StaffCheckinPortal = ({ userName, onLogout }: {
     </header>
 
     <nav aria-label="งานเจ้าหน้าที่" className="shrink-0 border-b border-[#D6D3D1] bg-white px-3 sm:px-6">
-      <div className="mx-auto grid max-w-7xl grid-cols-4 gap-1 sm:flex sm:gap-2">
-        {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button"
+      <div className={`mx-auto grid max-w-7xl gap-1 sm:flex sm:gap-2 ${canResetStudentPassword ? 'grid-cols-5' : 'grid-cols-4'}`}>
+        {[...tabs, ...(canResetStudentPassword ? [{ id: 'reset' as const, label: 'รีเซ็ตรหัส', icon: KeyRound }] : [])].map(({ id, label, icon: Icon }) => <button key={id} type="button"
           aria-current={activeTab === id ? 'page' : undefined}
           onClick={() => {
             setActiveTab(id);
@@ -61,6 +63,7 @@ export const StaffCheckinPortal = ({ userName, onLogout }: {
       {activeTab === 'history' && <CheckInHistory />}
       {activeTab === 'activities' && <ActivityManager />}
       {activeTab === 'create' && <ActivityManager initialCreateOpen />}
+      {activeTab === 'reset' && canResetStudentPassword && <AdminStudentPasswordReset />}
     </main>
   </div>;
 };

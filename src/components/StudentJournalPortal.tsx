@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookOpenCheck, CalendarDays, LogOut, RefreshCw } from 'lucide-react';
+import { BookOpenCheck, CalendarDays, LogOut, RefreshCw, UserRoundPen } from 'lucide-react';
 import { db } from '../db/db';
 import { pullStudentUpdates } from '../services/supabaseApi';
 import { buildStudentJournalEntries, type JournalEntry } from '../services/studentJournal';
@@ -22,10 +22,11 @@ const formatCheckInTime = (timestamp: string): string => {
   });
 };
 
-export const StudentJournalPortal = ({ studentId, studentName, onLogout, previewEntries, staffEntries, embedded = false, demoInteractive = false }: {
+export const StudentJournalPortal = ({ studentId, studentName, onLogout, onEditProfile, previewEntries, staffEntries, embedded = false, demoInteractive = false }: {
   studentId: string;
   studentName: string;
   onLogout: () => void;
+  onEditProfile?: () => void;
   previewEntries?: JournalEntry[];
   staffEntries?: JournalEntry[];
   embedded?: boolean;
@@ -118,10 +119,16 @@ export const StudentJournalPortal = ({ studentId, studentName, onLogout, preview
           <BookOpenCheck className="h-5 w-5 text-[#C2410C]" aria-hidden="true" />
           {loading ? 'กำลังโหลดกิจกรรม...' : `เช็กอินแล้ว ${entries.length} กิจกรรม`}
         </p>
+        <div className="flex flex-wrap gap-2">
+        {onEditProfile && <button type="button" onClick={onEditProfile}
+          className="inline-flex min-h-11 items-center gap-2 border border-[#A8A29E] bg-white px-4 py-2 text-sm font-semibold focus-visible:outline-4 focus-visible:outline-[#2563EB]">
+          <UserRoundPen className="h-4 w-4" aria-hidden="true" />แก้ไขข้อมูลส่วนตัว
+        </button>}
         {!usesStaticEntries && <button type="button" onClick={() => void refresh()} disabled={refreshing}
           className="inline-flex min-h-11 items-center gap-2 border border-[#A8A29E] bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50 focus-visible:outline-4 focus-visible:outline-[#2563EB]">
           <RefreshCw className="h-4 w-4" aria-hidden="true" />{refreshing ? 'กำลังอัปเดต...' : 'อัปเดตข้อมูล'}
         </button>}
+        </div>
       </div>
 
       {demoMessage && <p role="status" className="mt-5 border-l-4 border-[#15803D] bg-green-50 px-4 py-3 text-sm text-green-900">{demoMessage}</p>}
