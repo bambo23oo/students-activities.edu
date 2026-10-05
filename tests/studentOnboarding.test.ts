@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { splitRosterName, validateStudentPhoto } from '../src/services/studentOnboarding';
+import { splitRosterName, validateStudentPhoto, validateStudentOnboardingProfile } from '../src/services/studentOnboarding';
 
 test('prefills title and name from the imported Thai roster', () => {
   assert.deepEqual(splitRosterName('นางสาวนัทตญา ไกยะฝ่าย'), {
@@ -9,6 +9,16 @@ test('prefills title and name from the imported Thai roster', () => {
   assert.deepEqual(splitRosterName('นายสมชาย ใจดี'), {
     prefix: 'นาย', firstName: 'สมชาย', lastName: 'ใจดี'
   });
+});
+
+test('requires a university email and photo before journal access', () => {
+  const profile = {
+    prefix: 'นางสาว', firstName: 'ตัวอย่าง', lastName: 'นักศึกษา',
+    major: 'สาขาวิชาการศึกษาปฐมวัย', year: 1,
+    universityEmail: 'student@example.com', photoPath: ''
+  };
+  assert.throws(() => validateStudentOnboardingProfile(profile, new File(['x'], 'photo.jpg', { type: 'image/jpeg' })), /@npu.ac.th/);
+  assert.throws(() => validateStudentOnboardingProfile({ ...profile, universityEmail: 'student@npu.ac.th' }, null), /รูปภาพ/);
 });
 
 test('rejects oversize and non-image profile files before upload', () => {

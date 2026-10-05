@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Camera, CheckCircle2, LogOut } from 'lucide-react';
 import { NPULogo } from './NPULogo';
 import {
-  loadStudentOnboardingProfile, saveStudentOnboardingProfile, validateStudentPhoto,
+  loadStudentOnboardingProfile, saveStudentOnboardingProfile, validateStudentPhoto, validateStudentOnboardingProfile,
   type StudentOnboardingProfile
 } from '../services/studentOnboarding';
 
@@ -61,6 +61,7 @@ export const StudentOnboarding = ({ studentId, onComplete, onLogout, onCancel, i
     setBusy(true);
     setError(null);
     try {
+      validateStudentOnboardingProfile(profile, photo);
       if (demoProfile) { setDemoSaved(true); return; }
       await saveStudentOnboardingProfile(studentId, profile, photo);
       onComplete();

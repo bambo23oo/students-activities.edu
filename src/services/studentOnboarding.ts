@@ -63,6 +63,21 @@ export const validateStudentPhoto = (file: File): void => {
   }
 };
 
+export const validateStudentOnboardingProfile = (
+  profile: Omit<StudentOnboardingProfile, 'id' | 'photoUrl'>,
+  photo: File | null
+): void => {
+  if (!profile.prefix.trim() || !profile.firstName.trim() || !profile.lastName.trim()
+    || !profile.major.trim() || !profile.year || profile.year < 1 || profile.year > 6) {
+    throw new Error('กรุณาตรวจและกรอกข้อมูลนักศึกษาให้ครบทุกช่อง');
+  }
+  if (!/^[^\s@]+@npu\.ac\.th$/.test(profile.universityEmail.trim().toLowerCase())) {
+    throw new Error('กรุณากรอกอีเมลมหาวิทยาลัยที่ลงท้ายด้วย @npu.ac.th');
+  }
+  if (!photo && !profile.photoPath) throw new Error('กรุณาเพิ่มรูปภาพประจำตัว');
+  if (photo) validateStudentPhoto(photo);
+};
+
 export const saveStudentOnboardingProfile = async (
   studentId: string,
   profile: Omit<StudentOnboardingProfile, 'id' | 'photoUrl'>,
@@ -73,18 +88,11 @@ export const saveStudentOnboardingProfile = async (
   const lastName = profile.lastName.trim().replace(/\s+/g, ' ');
   const major = profile.major.trim();
   const universityEmail = profile.universityEmail.trim().toLowerCase();
-  if (!prefix || !firstName || !lastName || !major || !profile.year || profile.year < 1 || profile.year > 6) {
-    throw new Error('กรุณาตรวจและกรอกข้อมูลนักศึกษาให้ครบทุกช่อง');
-  }
-  if (!/^[^\s@]+@npu\.ac\.th$/.test(universityEmail)) {
-    throw new Error('กรุณากรอกอีเมลมหาวิทยาลัยที่ลงท้ายด้วย @npu.ac.th');
-  }
-  if (!photo && !profile.photoPath) throw new Error('กรุณาเพิ่มรูปภาพประจำตัว');
+  validateStudentOnboardingProfile(profile, photo);
 
   const supabase = client();
   let photoPath = profile.photoPath;
   if (photo) {
-    validateStudentPhoto(photo);
     const compressed = await imageCompression(photo, {
       maxSizeMB: 0.75, maxWidthOrHeight: 800,
       useWebWorker: true, fileType: 'image/jpeg'
