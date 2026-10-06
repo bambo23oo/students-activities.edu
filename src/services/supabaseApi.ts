@@ -38,6 +38,7 @@ const mapCloudActivity = (a: any): Activity => ({
   location: a.location || '',
   description: a.description || '',
   status: a.status || 'active',
+  scanMode: a.scan_mode === 'in_out' ? 'in_out' : 'single',
   hours: a.hours ?? 0,
   category: a.category || undefined,
   yearLevel: a.year_level || undefined,

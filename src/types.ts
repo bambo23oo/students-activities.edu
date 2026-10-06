@@ -32,6 +32,7 @@ export interface Activity {
   description: string;
   location: string;
   status: 'active' | 'completed' | 'upcoming';
+  scanMode?: 'single' | 'in_out';
   category?: string;
   hours?: number;
   points?: number; // คะแนนสะสม

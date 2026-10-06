@@ -31,6 +31,7 @@ const emptyActivityForm = {
   id: '', name: '', date: '', endDate: '', startTime: '', endTime: '',
   category: 'ประสบการณ์วิชาชีพ (ก่อนฝึก)', yearLevel: 'ปี 1 (รหัส 69)', cohort: '69',
   hours: 3, points: 10, capacity: 150, assignedStaff: '', selfCheckInAllowed: false,
+  scanMode: 'single' as NonNullable<Activity['scanMode']>,
   description: '', location: '', scheduleStatus: 'คงเดิม' as Activity['scheduleStatus'],
   originalSchedule: '', newSchedule: '', duration: '', note: ''
 };
@@ -102,6 +103,7 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
       description: newActivity.description || '',
       location: newActivity.location || 'คณะครุศาสตร์ มหาวิทยาลัยนครพนม',
       status: editingActivity?.status || 'completed',
+      scanMode: newActivity.scanMode,
       category: newActivity.category,
       yearLevel: newActivity.yearLevel,
       cohort: newActivity.cohort,
@@ -109,7 +111,7 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
       points: Number(newActivity.points),
       capacity: Number(newActivity.capacity),
       assignedStaffEmails: staffList.length > 0 ? staffList : undefined,
-      selfCheckInAllowed: newActivity.selfCheckInAllowed,
+      selfCheckInAllowed: newActivity.scanMode === 'single' && newActivity.selfCheckInAllowed,
       scheduleStatus: newActivity.scheduleStatus,
       originalSchedule: newActivity.originalSchedule,
       newSchedule: newActivity.newSchedule,
@@ -153,6 +155,7 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
       hours: activity.hours ?? 0, points: activity.points ?? 0, capacity: activity.capacity ?? 0,
       assignedStaff: activity.assignedStaffEmails?.join(', ') || '',
       selfCheckInAllowed: activity.selfCheckInAllowed ?? false,
+      scanMode: activity.scanMode || 'single',
       description: activity.description || '', location: activity.location || '',
       scheduleStatus: activity.scheduleStatus || 'คงเดิม',
       originalSchedule: activity.originalSchedule || '', newSchedule: activity.newSchedule || '',
@@ -408,6 +411,22 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
           )}
 
           <form onSubmit={handleAddActivity} className="space-y-4 text-xs">
+            <fieldset className="rounded-xl border-2 border-stone-200 p-3 sm:p-4">
+              <legend className="px-1 text-sm font-bold text-[#18181B]">วิธีบันทึกการเข้าร่วม</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm ${newActivity.scanMode === 'single' ? 'border-[#EA580C] bg-orange-50' : 'border-stone-200'}`}>
+                  <input type="radio" name="scanMode" value="single" checked={newActivity.scanMode === 'single'}
+                    onChange={() => setNewActivity({ ...newActivity, scanMode: 'single' })} />
+                  <span><strong>เช็กครั้งเดียว</strong><span className="block text-xs font-normal text-stone-600">สแกนหนึ่งครั้งต่อคนตลอดกิจกรรม</span></span>
+                </label>
+                <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm ${newActivity.scanMode === 'in_out' ? 'border-[#EA580C] bg-orange-50' : 'border-stone-200'}`}>
+                  <input type="radio" name="scanMode" value="in_out" checked={newActivity.scanMode === 'in_out'}
+                    onChange={() => setNewActivity({ ...newActivity, scanMode: 'in_out', selfCheckInAllowed: false })} />
+                  <span><strong>เช็กเข้า–ออก</strong><span className="block text-xs font-normal text-stone-600">สแกนเข้าและออกแยกกันในแต่ละวัน</span></span>
+                </label>
+              </div>
+              {newActivity.scanMode === 'in_out' && <p className="mt-2 text-xs text-stone-600">เจ้าหน้าที่เลือก “เช็กเข้า” หรือ “เช็กออก” ที่หน้าสแกน ระบบใช้วันที่ประเทศไทยและไม่อนุญาตให้ออกก่อนเข้าในวันเดียวกัน</p>}
+            </fieldset>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block font-bold text-stone-700 mb-1">รหัสกิจกรรม (ID)</label>
@@ -627,6 +646,7 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
                   type="checkbox"
                   id="selfCheckInAllowed"
                   checked={newActivity.selfCheckInAllowed}
+                  disabled={newActivity.scanMode === 'in_out'}
                   onChange={(e) => setNewActivity({...newActivity, selfCheckInAllowed: e.target.checked})}
                   className="rounded border-stone-300 text-[#EA580C] focus:ring-[#EA580C] w-4 h-4 cursor-pointer"
                 />

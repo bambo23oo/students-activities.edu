@@ -32,6 +32,7 @@ import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase, p
 import { saveActivityStatus } from '../services/activityRepository';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
 import { getSupabaseClient } from '../lib/supabase';
+import { bangkokScanDate, getDayScanEvents, recordActivityScan, type ScanDirection } from '../services/scanEventRepository';
 
 interface StaffScannerProps {
   onNavigateToStudent?: (studentId: string) => void;
@@ -63,11 +64,14 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   // Workflow state
   const [isScanningMode, setIsScanningMode] = useState(false);
   const [mode, setMode] = useState<'usb' | 'camera' | 'manual'>('camera');
+  const [scanDirection, setScanDirection] = useState<ScanDirection>('check_in');
+  const scanDirectionRef = useRef<ScanDirection>('check_in');
+  const [dayScanCounts, setDayScanCounts] = useState({ checkIns: 0, checkOuts: 0 });
   
   // Scanner state
   const [inputValue, setInputValue] = useState('');
   const [manualInput, setManualInput] = useState('');
-  const [manualCandidate, setManualCandidate] = useState<{ student: Student; activityId: string } | null>(null);
+  const [manualCandidate, setManualCandidate] = useState<{ student: Student; activityId: string; scanDirection: ScanDirection } | null>(null);
   const [manualLookupError, setManualLookupError] = useState('');
   const [manualLookingUp, setManualLookingUp] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -106,6 +110,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     method?: string; 
     cardType?: 'physical' | 'digital' | 'manual';
     scannerStation?: string;
+    scanType?: ScanDirection;
     isTemporary?: boolean;
     isPreRegistered?: boolean;
     isNew?: boolean;
@@ -126,6 +131,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
   useEffect(() => {
     ++manualLookupRequestRef.current;
+    scanDirectionRef.current = 'check_in';
+    setScanDirection('check_in');
     setManualCandidate(null);
     setManualLookupError('');
     setManualLookingUp(false);
@@ -216,6 +223,27 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     const totalCount = await db.checkInLogs.where('activityId').equals(actId).count();
     setTotalActivityCount(totalCount);
 
+    const activity = await db.activities.get(actId);
+    if (activity?.scanMode === 'in_out') {
+      if (!navigator.onLine) return;
+      const { events, checkIns, checkOuts } = await getDayScanEvents(actId);
+      setDayScanCounts({ checkIns, checkOuts });
+      const recent = await Promise.all(events.map(async (event, idx) => {
+        const student = await db.students.get(event.studentId);
+        return {
+          id: event.id, studentId: event.studentId,
+          studentName: student?.name || `รหัสนักศึกษา ${event.studentId}`,
+          faculty: student?.faculty, major: student?.major,
+          timestamp: event.scannedAt, method: event.method,
+          scanType: event.scanType, scannerStation: event.scannerStation,
+          isNew: idx === 0
+        };
+      }));
+      setSessionLogs(recent);
+      return;
+    }
+    setDayScanCounts({ checkIns: 0, checkOuts: 0 });
+
     const logs = await db.checkInLogs.where('activityId').equals(actId).reverse().sortBy('timestamp');
     const enriched = await Promise.all(logs.slice(0, 20).map(async (l, idx) => {
       const student = await db.students.get(l.studentId);
@@ -267,6 +295,15 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     setScannerStation(newStation);
     localStorage.setItem('npu_scanner_station', newStation);
     setIsEditingStation(false);
+  };
+
+  const chooseScanDirection = (direction: ScanDirection) => {
+    scanDirectionRef.current = direction;
+    setScanDirection(direction);
+    ++manualLookupRequestRef.current;
+    setManualCandidate(null);
+    setManualLookupError('');
+    lastScanKeyRef.current = { id: '', time: 0 };
   };
 
   // Staff Open/Close Activity Toggle Handler
@@ -666,13 +703,16 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     }
     setManualLookingUp(true);
     try {
+      const isInOut = activities.find(a => a.id === selectedActivityId)?.scanMode === 'in_out';
       const [{ data: studentRow, error: studentError }, { data: existing, error: existingError }] = await Promise.all([
         client.from('students').select('id, name, email, faculty, major, year').eq('id', studentId).maybeSingle(),
-        client.from('check_in_logs').select('id').eq('activity_id', selectedActivityId).eq('student_id', studentId).maybeSingle()
+        isInOut
+          ? Promise.resolve({ data: null, error: null })
+          : client.from('check_in_logs').select('id').eq('activity_id', selectedActivityId).eq('student_id', studentId).maybeSingle()
       ]);
       if (studentError || existingError) throw new Error('ตรวจสอบข้อมูลกลางไม่ได้ กรุณาลองใหม่');
       if (!studentRow) throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาตรวจสอบรหัสอีกครั้ง');
-      if (existing || await db.checkInLogs.where('[activityId+studentId]').equals([selectedActivityId, studentId]).first()) {
+      if (!isInOut && (existing || await db.checkInLogs.where('[activityId+studentId]').equals([selectedActivityId, studentId]).first())) {
         throw new Error('นักศึกษาคนนี้เช็กอินกิจกรรมนี้แล้ว ไม่ต้องบันทึกซ้ำ');
       }
       const student: Student = {
@@ -684,7 +724,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         year: studentRow.year || undefined
       };
       if (manualLookupRequestRef.current === requestId) {
-        setManualCandidate({ student, activityId: selectedActivityId });
+        setManualCandidate({ student, activityId: selectedActivityId, scanDirection: scanDirectionRef.current });
       }
     } catch (error) {
       if (manualLookupRequestRef.current === requestId) {
@@ -696,7 +736,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   };
 
   const handleManualConfirm = async () => {
-    if (!manualCandidate || manualCandidate.activityId !== selectedActivityId || manualCandidate.student.id !== manualInput || isProcessingRef.current) return;
+    if (!manualCandidate || manualCandidate.activityId !== selectedActivityId || manualCandidate.scanDirection !== scanDirectionRef.current || manualCandidate.student.id !== manualInput || isProcessingRef.current) return;
     const studentId = manualCandidate.student.id;
     setManualCandidate(null);
     setManualInput('');
@@ -707,6 +747,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const processScan = async (rawInput: string, method: 'usb' | 'camera' | 'manual') => {
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
+    const directionAtScan = scanDirectionRef.current;
 
     try {
       const activeActivity = activities.find(a => a.id === selectedActivityId);
@@ -748,6 +789,48 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         if (!student) {
           throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาให้เจ้าหน้าที่ตรวจสอบข้อมูลก่อนเช็คอิน');
         }
+      }
+
+      if (activeActivity.scanMode === 'in_out') {
+        const direction = directionAtScan;
+        const result = await recordActivityScan(selectedActivityId, studentId, direction, method, scannerStation);
+        if (result.status === 'closed') throw new Error('กิจกรรมนี้ปิดบันทึกในฐานข้อมูลกลางแล้ว');
+        if (result.status === 'wrong_mode') throw new Error('มีการเปลี่ยนวิธีสแกนของกิจกรรม กรุณาเลือกกิจกรรมใหม่');
+        if (result.status === 'unknown_student') throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษากลาง');
+        if (result.status === 'missing_check_in') throw new Error('ยังไม่มีรายการเช็กเข้าในวันนี้ กรุณาเช็กเข้าก่อนเช็กออก');
+
+        if (result.status === 'recorded' && direction === 'check_in') {
+          try {
+            const count = await pullScannerCheckInUpdates(selectedActivityId);
+            setTotalActivityCount(count);
+          } catch (refreshError) {
+            console.warn('Attendance refresh failed after successful scan:', refreshError);
+          }
+          window.dispatchEvent(new Event('db_updated'));
+          const bc = new BroadcastChannel('npu_db_sync');
+          bc.postMessage({ type: 'check_in', studentId, activityId: selectedActivityId });
+          bc.close();
+        }
+        const duplicate = result.status === 'duplicate';
+        triggerAudioAndHaptic(duplicate ? 'warning' : 'success');
+        triggerScreenFlash(duplicate ? 'warning' : 'success');
+        const eventTime = result.scanned_at
+          ? new Date(result.scanned_at).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })
+          : undefined;
+        const actionLabel = direction === 'check_in' ? 'เช็กเข้า' : 'เช็กออก';
+        setScanResult({
+          status: duplicate ? 'warning' : 'success',
+          message: duplicate
+            ? `${student.name} ${actionLabel}วันนี้แล้ว ไม่บันทึกซ้ำ`
+            : `${actionLabel}สำเร็จ: ${student.name}`,
+          student, time: eventTime, cardSource: effectiveSource,
+          wasConvertedFromThai
+        });
+        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = setTimeout(() => setScanResult(null), 3000);
+        try { await loadSessionLogs(selectedActivityId); }
+        catch (refreshError) { console.warn('Scan feed refresh failed after successful scan:', refreshError); }
+        return;
       }
 
       // 3. Strict Single Check-in Rule (รับข้อมูลแค่ 1 ครั้งต่อกิจกรรม ตรวจสอบทั้งในเครื่องและที่ซิงก์มาจากเครื่องอื่น)
@@ -970,6 +1053,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   <div className="text-[11px] text-stone-600 flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
                     <span>📅 <strong>กำหนด:</strong> {selectedActivityObj.newSchedule || selectedActivityObj.date}</span>
                     <span>📍 {selectedActivityObj.location || 'คณะครุศาสตร์ ม.นครพนม'}</span>
+                    <span><strong>วิธีสแกน:</strong> {selectedActivityObj.scanMode === 'in_out' ? 'เช็กเข้า–ออกทุกวัน' : 'เช็กครั้งเดียว'}</span>
                   </div>
 
                   {/* Staff Open / Close Activity Toggle Control */}
@@ -1160,6 +1244,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             <span>📅 {selectedActivityObj?.newSchedule || selectedActivityObj?.date}</span>
             <span>🎯 นับสะสม 1 กิจกรรม</span>
             <span>📍 {selectedActivityObj?.location || 'คณะครุศาสตร์'}</span>
+            {selectedActivityObj?.scanMode === 'in_out' && <span>วันนี้ {bangkokScanDate()} · เข้า {dayScanCounts.checkIns} · ออก {dayScanCounts.checkOuts}</span>}
           </p>
         </div>
 
@@ -1238,6 +1323,25 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             </div>
           </div>
         </div>
+      )}
+
+      {selectedActivityObj?.scanMode === 'in_out' && (
+        <fieldset className="rounded-xl border-2 border-[#18181B] bg-white p-3 sm:p-4">
+          <legend className="px-1 text-sm font-black text-[#18181B]">เลือกการสแกนวันนี้ · {bangkokScanDate()}</legend>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" aria-pressed={scanDirection === 'check_in'}
+              onClick={() => chooseScanDirection('check_in')}
+              className={`min-h-12 rounded-xl border-2 px-4 py-2 text-sm font-bold ${scanDirection === 'check_in' ? 'border-[#18181B] bg-[#EA580C] text-white' : 'border-stone-300 bg-white text-stone-800'}`}>
+              เช็กเข้า
+            </button>
+            <button type="button" aria-pressed={scanDirection === 'check_out'}
+              onClick={() => chooseScanDirection('check_out')}
+              className={`min-h-12 rounded-xl border-2 px-4 py-2 text-sm font-bold ${scanDirection === 'check_out' ? 'border-[#18181B] bg-[#2563EB] text-white' : 'border-stone-300 bg-white text-stone-800'}`}>
+              เช็กออก
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-stone-600">สแกนได้หนึ่งครั้งต่อประเภทต่อวัน · ต้องเช็กเข้าก่อนเช็กออก · ต้องออนไลน์</p>
+        </fieldset>
       )}
 
       {/* Capacity Alert Banner (Requirement: เมื่อจำนวนผู้เข้าร่วมใกล้เต็ม 90% มีแถบสีส้มแจ้งเตือน) */}
@@ -1423,7 +1527,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                       <button type="button" onClick={() => { setManualCandidate(null); setManualInput(''); }}
                         className="min-h-12 rounded-xl border-2 border-[#18181B] bg-white px-3 font-bold text-sm">ข้อมูลไม่ตรง / ยกเลิก</button>
                       <button type="button" onClick={handleManualConfirm}
-                        className="min-h-12 rounded-xl border-2 border-[#18181B] bg-emerald-500 px-3 font-black text-sm text-white">ข้อมูลตรง ยืนยันเช็กอิน</button>
+                        className="min-h-12 rounded-xl border-2 border-[#18181B] bg-emerald-500 px-3 font-black text-sm text-white">ข้อมูลตรง ยืนยัน{selectedActivityObj?.scanMode === 'in_out' ? (scanDirection === 'check_in' ? 'เช็กเข้า' : 'เช็กออก') : 'เช็กอิน'}</button>
                     </div>
                   </div>
                 )}
@@ -1639,7 +1743,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#18181B]" />
                 <h3 className="text-xs sm:text-sm font-black text-[#18181B]">
-                  รายการเช็กอินล่าสุด
+                  {selectedActivityObj?.scanMode === 'in_out' ? 'รายการเข้า–ออกวันนี้' : 'รายการเช็กอินล่าสุด'}
                 </h3>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1657,7 +1761,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             </div>
 
             {/* Filter Tabs for All vs Invalid Data (Post-Event & Reporting Requirement) */}
-            <div className="flex items-center gap-1.5 mb-2.5 pb-2 border-b border-stone-200">
+            {selectedActivityObj?.scanMode === 'in_out' ? (
+              <p className="mb-2.5 border-b border-stone-200 pb-2 text-xs text-stone-600">แสดง 20 รายการล่าสุดของวันนี้ (เวลาไทย)</p>
+            ) : <div className="flex items-center gap-1.5 mb-2.5 pb-2 border-b border-stone-200">
               <button
                 type="button"
                 onClick={() => setLogFilter('all')}
@@ -1684,7 +1790,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   {sessionLogs.filter(l => l.isTemporary).length}
                 </span>
               </button>
-            </div>
+            </div>}
 
             {sessionLogs.length === 0 ? (
               <div className="text-center py-12 px-4 border-2 border-dashed border-stone-200 rounded-xl">
@@ -1693,10 +1799,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 </div>
                 <div className="text-xs font-bold text-stone-700">ยังไม่มีประวัติการสแกนในรอบนี้</div>
                 <p className="text-[11px] text-stone-400 mt-0.5 font-medium">
-                  เมื่อบันทึกเช็กอินสำเร็จ รายชื่อจะปรากฏที่นี่
+                  เมื่อบันทึก{selectedActivityObj?.scanMode === 'in_out' ? 'เช็กเข้า–ออก' : 'เช็กอิน'}สำเร็จ รายชื่อจะปรากฏที่นี่
                 </p>
               </div>
-            ) : logFilter === 'invalid' && sessionLogs.filter(l => l.isTemporary).length === 0 ? (
+            ) : selectedActivityObj?.scanMode !== 'in_out' && logFilter === 'invalid' && sessionLogs.filter(l => l.isTemporary).length === 0 ? (
               <div className="text-center py-8 px-4 border-2 border-dashed border-emerald-200 bg-emerald-50/50 rounded-xl">
                 <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1.5" />
                 <div className="text-xs font-bold text-emerald-900">ไม่มีข้อมูลที่ผิดปกติหรือขาดรูปถ่าย</div>
@@ -1706,7 +1812,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               </div>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {(logFilter === 'invalid' ? sessionLogs.filter(l => l.isTemporary) : sessionLogs).map((log, idx) => (
+                {(selectedActivityObj?.scanMode !== 'in_out' && logFilter === 'invalid' ? sessionLogs.filter(l => l.isTemporary) : sessionLogs).map((log, idx) => (
                   <div 
                     key={log.id}
                     className={`p-3 rounded-xl border-2 border-[#18181B] transition-all flex items-center justify-between gap-2 ${
@@ -1751,7 +1857,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                           </span>
                         ) : (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-white text-[#18181B] font-bold border border-[#18181B] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                            {log.method === 'camera' ? '📱 กล้อง/QR' : log.method === 'usb' ? '💳 เครื่องสแกน' : '⌨️ กรอกรหัส'}
+                            {log.scanType ? (log.scanType === 'check_in' ? 'เช็กเข้า' : 'เช็กออก') : log.method === 'camera' ? '📱 กล้อง/QR' : log.method === 'usb' ? '💳 เครื่องสแกน' : '⌨️ กรอกรหัส'}
                           </span>
                         )}
                       </div>
