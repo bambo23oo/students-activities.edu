@@ -797,7 +797,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         if (result.status === 'closed') throw new Error('กิจกรรมนี้ปิดบันทึกในฐานข้อมูลกลางแล้ว');
         if (result.status === 'wrong_mode') throw new Error('มีการเปลี่ยนวิธีสแกนของกิจกรรม กรุณาเลือกกิจกรรมใหม่');
         if (result.status === 'unknown_student') throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษากลาง');
-        if (result.status === 'missing_check_in') throw new Error('ยังไม่มีรายการเช็กเข้าในวันนี้ กรุณาเช็กเข้าก่อนเช็กออก');
+        if (result.status === 'missing_check_in') throw new Error('ยังไม่มีรายการเช็กเข้าที่ยังไม่เช็กออก กรุณาเช็กเข้าก่อน');
 
         if (result.status === 'recorded' && direction === 'check_in') {
           try {
@@ -1053,7 +1053,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   <div className="text-[11px] text-stone-600 flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
                     <span>📅 <strong>กำหนด:</strong> {selectedActivityObj.newSchedule || selectedActivityObj.date}</span>
                     <span>📍 {selectedActivityObj.location || 'คณะครุศาสตร์ ม.นครพนม'}</span>
-                    <span><strong>วิธีสแกน:</strong> {selectedActivityObj.scanMode === 'in_out' ? 'เช็กเข้า–ออกทุกวัน' : 'เช็กครั้งเดียว'}</span>
+                    <span><strong>วิธีสแกน:</strong> {selectedActivityObj.scanMode === 'in_out' ? 'เช็กเข้า–ออก (ข้ามวันได้)' : 'เช็กครั้งเดียว'}</span>
                   </div>
 
                   {/* Staff Open / Close Activity Toggle Control */}
@@ -1340,7 +1340,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               เช็กออก
             </button>
           </div>
-          <p className="mt-2 text-xs text-stone-600">สแกนได้หนึ่งครั้งต่อประเภทต่อวัน · ต้องเช็กเข้าก่อนเช็กออก · ต้องออนไลน์</p>
+          <p className="mt-2 text-xs text-stone-600">สแกนได้อย่างละหนึ่งครั้งต่อวัน · เช็กออกหลังเช็กเข้าได้แม้เป็นวันถัดไป · ต้องออนไลน์</p>
         </fieldset>
       )}
 

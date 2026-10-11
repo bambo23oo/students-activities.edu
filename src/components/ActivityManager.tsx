@@ -422,10 +422,10 @@ export const ActivityManager: React.FC<{ initialCreateOpen?: boolean }> = ({ ini
                 <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm ${newActivity.scanMode === 'in_out' ? 'border-[#EA580C] bg-orange-50' : 'border-stone-200'}`}>
                   <input type="radio" name="scanMode" value="in_out" checked={newActivity.scanMode === 'in_out'}
                     onChange={() => setNewActivity({ ...newActivity, scanMode: 'in_out', selfCheckInAllowed: false })} />
-                  <span><strong>เช็กเข้า–ออก</strong><span className="block text-xs font-normal text-stone-600">สแกนเข้าและออกแยกกันในแต่ละวัน</span></span>
+                  <span><strong>เช็กเข้า–ออก</strong><span className="block text-xs font-normal text-stone-600">สแกนเข้าและออกแยกกัน ข้ามวันได้</span></span>
                 </label>
               </div>
-              {newActivity.scanMode === 'in_out' && <p className="mt-2 text-xs text-stone-600">เจ้าหน้าที่เลือก “เช็กเข้า” หรือ “เช็กออก” ที่หน้าสแกน ระบบใช้วันที่ประเทศไทยและไม่อนุญาตให้ออกก่อนเข้าในวันเดียวกัน</p>}
+              {newActivity.scanMode === 'in_out' && <p className="mt-2 text-xs text-stone-600">เจ้าหน้าที่เลือก “เช็กเข้า” หรือ “เช็กออก” ที่หน้าสแกน เช็กออกได้หลังเช็กเข้า แม้เป็นวันถัดไป</p>}
             </fieldset>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
