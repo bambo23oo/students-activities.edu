@@ -59,3 +59,16 @@ export const saveActivityStatus = async (activity: Activity, status: Activity['s
   await db.activities.update(activity.id, { status });
   window.dispatchEvent(new Event('db_updated'));
 };
+
+export const enableActivityCheckOut = async (activity: Activity): Promise<void> => {
+  const client = getSupabaseClient();
+  if (!client || !navigator.onLine) throw new Error('ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อเปิดใช้เช็กออก');
+  const { data, error } = await client.from('activities')
+    .update({ scan_mode: 'in_out', self_check_in_allowed: false })
+    .eq('id', activity.id).eq('scan_mode', 'single')
+    .select('id').maybeSingle();
+  if (error) throw new Error(error.message || 'เปลี่ยนวิธีสแกนไม่สำเร็จ');
+  if (!data) throw new Error('มีการเปลี่ยนวิธีสแกนจากเครื่องอื่นแล้ว กรุณารีเฟรชรายการกิจกรรม');
+  await db.activities.update(activity.id, { scanMode: 'in_out', selfCheckInAllowed: false });
+  window.dispatchEvent(new Event('db_updated'));
+};

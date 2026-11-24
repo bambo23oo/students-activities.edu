@@ -29,10 +29,12 @@ import {
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from 'html5-qrcode';
 import { logCheckInToSupabase, getPendingSyncCount, syncPendingLogsToSupabase, pullScannerActivityUpdates, pullScannerCheckInUpdates } from '../services/supabaseApi';
-import { saveActivityStatus } from '../services/activityRepository';
+import { enableActivityCheckOut, saveActivityStatus } from '../services/activityRepository';
 import { extractAndCleanStudentID } from '../utils/thaiKeyboardConverter';
 import { getSupabaseClient } from '../lib/supabase';
 import { bangkokScanDate, getDayScanEvents, recordActivityScan, type ScanDirection } from '../services/scanEventRepository';
+import { StudentCardRegistration } from './StudentCardRegistration';
+import { StoredScannerImport } from './StoredScannerImport';
 
 interface StaffScannerProps {
   onNavigateToStudent?: (studentId: string) => void;
@@ -63,6 +65,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
 
   // Workflow state
   const [isScanningMode, setIsScanningMode] = useState(false);
+  const [showMemoryImport, setShowMemoryImport] = useState(false);
   const [mode, setMode] = useState<'usb' | 'camera' | 'manual'>('camera');
   const [scanDirection, setScanDirection] = useState<ScanDirection>('check_in');
   const scanDirectionRef = useRef<ScanDirection>('check_in');
@@ -74,6 +77,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
   const [manualCandidate, setManualCandidate] = useState<{ student: Student; activityId: string; scanDirection: ScanDirection } | null>(null);
   const [manualLookupError, setManualLookupError] = useState('');
   const [manualLookingUp, setManualLookingUp] = useState(false);
+  const [missingStudentId, setMissingStudentId] = useState('');
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
+  const isAddingStudentRef = useRef(false);
+  const [isChangingScanMode, setIsChangingScanMode] = useState(false);
+  const [scanModeError, setScanModeError] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   
   // Instant visual feedback states (Non-blocking)
@@ -136,6 +144,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     setManualCandidate(null);
     setManualLookupError('');
     setManualLookingUp(false);
+    setMissingStudentId('');
+    setIsAddingStudent(false);
+    isAddingStudentRef.current = false;
+    setScanModeError('');
+    setShowMemoryImport(false);
   }, [selectedActivityId]);
 
   useEffect(() => {
@@ -318,6 +331,24 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       setActivities(prev => prev.map(a => a.id === actId ? { ...a, status: newStatus } : a));
     } catch (error) {
       setScanResult({ status: 'error', message: error instanceof Error ? error.message : 'เปลี่ยนสถานะกิจกรรมไม่สำเร็จ' });
+    }
+  };
+
+  const handleEnableCheckOut = async () => {
+    const activity = activities.find(a => a.id === selectedActivityId);
+    if (!activity || activity.scanMode === 'in_out' || isChangingScanMode) return;
+    setIsChangingScanMode(true);
+    setScanModeError('');
+    try {
+      await enableActivityCheckOut(activity);
+      setActivities(previous => previous.map(item => item.id === activity.id
+        ? { ...item, scanMode: 'in_out', selfCheckInAllowed: false } : item));
+      chooseScanDirection('check_out');
+      void loadSessionLogs(activity.id).catch(error => console.warn('Scan feed refresh failed:', error));
+    } catch (error) {
+      setScanModeError(error instanceof Error ? error.message : 'เปิดใช้เช็กออกไม่สำเร็จ');
+    } finally {
+      setIsChangingScanMode(false);
     }
   };
 
@@ -687,6 +718,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     const requestId = ++manualLookupRequestRef.current;
     setManualCandidate(null);
     setManualLookupError('');
+    setMissingStudentId('');
     const studentId = manualInput.trim();
     if (!/^\d{12}$/.test(studentId)) {
       setManualLookupError('กรุณากรอกรหัสนักศึกษา 12 หลัก');
@@ -711,7 +743,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
           : client.from('check_in_logs').select('id').eq('activity_id', selectedActivityId).eq('student_id', studentId).maybeSingle()
       ]);
       if (studentError || existingError) throw new Error('ตรวจสอบข้อมูลกลางไม่ได้ กรุณาลองใหม่');
-      if (!studentRow) throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาตรวจสอบรหัสอีกครั้ง');
+      if (!studentRow || !studentRow.name?.trim()) {
+        if (manualLookupRequestRef.current === requestId) setMissingStudentId(studentId);
+        throw new Error('ไม่พบชื่อนักศึกษาในทะเบียนกลาง กรุณาตรวจรหัสกับบัตรก่อนเพิ่มข้อมูล');
+      }
       if (!isInOut && (existing || await db.checkInLogs.where('[activityId+studentId]').equals([selectedActivityId, studentId]).first())) {
         throw new Error('นักศึกษาคนนี้เช็กอินกิจกรรมนี้แล้ว ไม่ต้องบันทึกซ้ำ');
       }
@@ -743,10 +778,27 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
     await processScan(studentId, 'manual');
   };
 
+  const handleStudentSaved = async (student: Student) => {
+    try { await db.students.put(student); }
+    catch (error) { console.warn('Local roster cache update failed:', error); }
+    setMissingStudentId('');
+    setIsAddingStudent(false);
+    isAddingStudentRef.current = false;
+    setManualLookupError('');
+    setScanResult({ status: 'warning', message: `เพิ่มข้อมูล ${student.name} แล้ว ยังไม่ได้เช็กอิน กรุณาตรวจชื่อและยืนยันอีกครั้ง` });
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => setScanResult(null), 4000);
+    if (mode === 'manual') {
+      setManualInput(student.id);
+      setManualCandidate({ student, activityId: selectedActivityId, scanDirection: scanDirectionRef.current });
+    }
+  };
+
   // High-Speed Check-In Engine (No blocking dialogs, instantaneous feedback)
   const processScan = async (rawInput: string, method: 'usb' | 'camera' | 'manual') => {
-    if (isProcessingRef.current) return;
+    if (isProcessingRef.current || isAddingStudentRef.current) return;
     isProcessingRef.current = true;
+    setMissingStudentId('');
     const directionAtScan = scanDirectionRef.current;
 
     try {
@@ -765,7 +817,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
       // 2. Resolve the student from the verified roster. A scanned number alone
       // is never enough to create a student identity.
       let student = await db.students.get(studentId);
-      if (!student) {
+      if (!student?.name?.trim()) {
         const client = getSupabaseClient();
         if (client) {
           const { data: rosterStudent, error: lookupError } = await client
@@ -774,7 +826,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             .eq('id', studentId)
             .maybeSingle();
           if (lookupError) throw new Error('ตรวจสอบทะเบียนนักศึกษาไม่ได้ กรุณาลองอีกครั้งหรือติดต่อเจ้าหน้าที่');
-          if (rosterStudent) {
+          if (rosterStudent?.name?.trim()) {
             student = {
               id: rosterStudent.id,
               name: rosterStudent.name,
@@ -786,8 +838,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
             await db.students.put(student);
           }
         }
-        if (!student) {
-          throw new Error('ไม่พบรหัสนี้ในทะเบียนนักศึกษา กรุณาให้เจ้าหน้าที่ตรวจสอบข้อมูลก่อนเช็คอิน');
+        if (!student?.name?.trim()) {
+          setMissingStudentId(studentId);
+          throw new Error('ไม่พบชื่อนักศึกษาในทะเบียนกลาง กรุณาตรวจรหัสกับบัตรก่อนเพิ่มข้อมูล');
         }
       }
 
@@ -1183,6 +1236,12 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                 <Play className="w-4 h-4 text-[#FACC15]" />
                 <span>เริ่มสแกนเช็คอิน</span>
               </button>
+              <button type="button" disabled={!selectedActivityObj}
+                onClick={() => setShowMemoryImport(value => !value)}
+                className="min-h-12 w-full rounded-xl border-2 border-[#18181B] bg-white px-6 py-3 text-sm font-bold text-[#18181B] disabled:opacity-50">
+                {showMemoryImport ? 'ปิดการนำเข้าจากเครื่องบันทึก' : 'นำเข้าจากเครื่องสแกนแบบมีหน่วยความจำ'}
+              </button>
+              {showMemoryImport && selectedActivityObj && <StoredScannerImport key={`${selectedActivityObj.id}:${selectedActivityObj.scanMode || 'single'}`} activity={selectedActivityObj} scannerStation={scannerStation} />}
             </div>
 
             <div className="pt-4 border-t-2 border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
@@ -1344,6 +1403,34 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
         </fieldset>
       )}
 
+      {selectedActivityObj && selectedActivityObj.scanMode !== 'in_out' && (
+        <div className="flex flex-col gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-stone-900">กิจกรรมนี้ตั้งไว้ให้เช็กครั้งเดียว จึงยังไม่มีปุ่มเช็กออก</p>
+            <p className="mt-1 text-xs text-stone-700">เปิดใช้เช็กเข้า–ออกเฉพาะกิจกรรมนี้ได้ โดยข้อมูลเช็กอินเดิมยังอยู่</p>
+            {scanModeError && <p role="alert" className="mt-2 text-xs font-bold text-red-800">{scanModeError}</p>}
+          </div>
+          <button type="button" onClick={handleEnableCheckOut} disabled={isChangingScanMode}
+            className="min-h-12 shrink-0 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
+            {isChangingScanMode ? 'กำลังเปิดใช้...' : 'เปิดใช้เช็กเข้า–ออก'}
+          </button>
+        </div>
+      )}
+
+      {missingStudentId && !isAddingStudent && (
+        <div className="flex flex-col gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-stone-900">ไม่พบชื่อของรหัส <strong className="font-mono">{missingStudentId}</strong> ในทะเบียนกลาง ตรวจบัตรก่อนเพิ่มข้อมูล</p>
+          <button type="button" onClick={() => { isAddingStudentRef.current = true; setIsAddingStudent(true); }}
+            className="min-h-12 shrink-0 rounded-lg bg-[#EA580C] px-6 py-3 text-sm font-bold text-white">
+            เพิ่มข้อมูลนักศึกษาจากบัตร
+          </button>
+        </div>
+      )}
+      {missingStudentId && isAddingStudent && (
+        <StudentCardRegistration studentId={missingStudentId} onSaved={handleStudentSaved}
+          onCancel={() => { isAddingStudentRef.current = false; setIsAddingStudent(false); }} />
+      )}
+
       {/* Capacity Alert Banner (Requirement: เมื่อจำนวนผู้เข้าร่วมใกล้เต็ม 90% มีแถบสีส้มแจ้งเตือน) */}
       {selectedActivityObj?.capacity && totalActivityCount >= Math.floor(selectedActivityObj.capacity * 0.9) && (
         <div className="p-3.5 bg-amber-100 border-2 border-amber-500 rounded-xl text-amber-950 font-bold text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-[2px_2px_0px_0px_rgba(245,158,11,1)] animate-in fade-in">
@@ -1449,7 +1536,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
           {/* Two check-in paths */}
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => { ++manualLookupRequestRef.current; setMode('camera'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
+              onClick={() => { ++manualLookupRequestRef.current; setMode('camera'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); setMissingStudentId(''); setIsAddingStudent(false); isAddingStudentRef.current = false; }}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 border-[#18181B] min-h-[44px] ${
                 mode !== 'manual'
                   ? 'bg-[#FACC15] text-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]'
@@ -1460,7 +1547,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
               <span>มีบัตร: สแกน</span>
             </button>
             <button
-              onClick={() => { ++manualLookupRequestRef.current; setMode('manual'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
+              onClick={() => { ++manualLookupRequestRef.current; setMode('manual'); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); setMissingStudentId(''); setIsAddingStudent(false); isAddingStudentRef.current = false; }}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border-2 border-[#18181B] min-h-[44px] ${
                 mode === 'manual'
                   ? 'bg-[#FACC15] text-[#18181B] shadow-[2px_2px_0px_0px_rgba(24,24,27,1)]'
@@ -1502,7 +1589,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({ onNavigateToStudent 
                   <label htmlFor="manual-student-id" className="block text-sm font-bold text-stone-900">รหัสนักศึกษา</label>
                   <input id="manual-student-id" type="text" inputMode="numeric" autoComplete="off" maxLength={12}
                     value={manualInput}
-                    onChange={(e) => { ++manualLookupRequestRef.current; setManualInput(e.target.value.replace(/\D/g, '').slice(0, 12)); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); }}
+                    onChange={(e) => { ++manualLookupRequestRef.current; setManualInput(e.target.value.replace(/\D/g, '').slice(0, 12)); setManualCandidate(null); setManualLookupError(''); setManualLookingUp(false); setMissingStudentId(''); setIsAddingStudent(false); isAddingStudentRef.current = false; }}
                     placeholder="กรอกรหัสนักศึกษา 12 หลัก"
                     className="w-full min-h-12 px-4 bg-[#FAF7F0] border-2 border-[#18181B] rounded-xl text-base font-mono font-bold text-[#18181B] outline-none focus:ring-4 focus:ring-[#FACC15]"
                   />
