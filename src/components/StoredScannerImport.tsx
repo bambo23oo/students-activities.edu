@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
 import { pullScannerCheckInUpdates } from '../services/supabaseApi';
 import { bangkokScanDate, recordActivityScan, type ScanDirection } from '../services/scanEventRepository';
@@ -20,7 +20,9 @@ const chunks = <T,>(items: T[], size: number): T[][] => {
 };
 
 export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activity, scannerStation }) => {
-  const [text, setText] = useState('');
+  const captureRef = useRef<HTMLTextAreaElement>(null);
+  const captureDirtyRef = useRef(false);
+  const [captureActive, setCaptureActive] = useState(false);
   const [sourceName, setSourceName] = useState('');
   const [parsed, setParsed] = useState<ParsedStoredScannerFile | null>(null);
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
@@ -28,10 +30,19 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [progress, setProgress] = useState('');
+
+  const markCaptureChanged = () => {
+    if (captureDirtyRef.current) return;
+    captureDirtyRef.current = true;
+    setParsed(null); setPreview(null); setResult(null); setError('');
+  };
 
   const onFile = async (file?: File) => {
     if (!file) return;
-    setError(''); setPreview(null); setResult(null); setParsed(null); setText('');
+    setError(''); setPreview(null); setResult(null); setParsed(null);
+    if (captureRef.current) captureRef.current.value = '';
+    captureDirtyRef.current = false;
     try {
       setParsed(await parseStoredScannerFile(file));
       setSourceName(file.name);
@@ -43,10 +54,11 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
   const usePastedText = () => {
     setError(''); setPreview(null); setResult(null);
     try {
-      const value = parseStoredScannerText(text);
+      const value = parseStoredScannerText(captureRef.current?.value || '');
       if (!value.rows.length) throw new Error('ไม่พบรหัสนักศึกษา 12 หลัก กรุณาตรวจข้อมูลที่วาง');
       setParsed(value);
-      setSourceName('ข้อความที่วาง');
+      setSourceName('ข้อมูลที่ส่งจากเครื่องหรือวาง');
+      captureDirtyRef.current = false;
     } catch (cause) {
       setParsed(null);
       setError(cause instanceof Error ? cause.message : 'อ่านข้อมูลไม่สำเร็จ');
@@ -58,6 +70,7 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
     const client = getSupabaseClient();
     if (!client || !navigator.onLine) { setError('ต้องออนไลน์เพื่อตรวจสอบทะเบียนกลางก่อนนำเข้า'); return; }
     setBusy(true); setError(''); setPreview(null); setResult(null);
+    setProgress('กำลังตรวจรายชื่อ...');
     try {
       const { data: liveActivity, error: activityError } = await client.from('activities')
         .select('id, status, scan_mode').eq('id', activity.id).single();
@@ -66,17 +79,21 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
       const ids = parsed.rows.map(row => row.studentId);
       const studentRows: { id: string; name: string | null }[] = [];
       const existingIds = new Set<string>();
-      for (const batch of chunks(ids, 100)) {
-        const [students, existing] = await Promise.all([
+      const batches = chunks(ids, 100);
+      for (let offset = 0; offset < batches.length; offset += 4) {
+        const responses = await Promise.all(batches.slice(offset, offset + 4).map(async batch => Promise.all([
           client.from('students').select('id, name').in('id', batch),
           activity.scanMode === 'in_out'
             ? client.from('activity_scan_events').select('student_id').eq('activity_id', activity.id)
               .eq('scan_date', bangkokScanDate()).eq('scan_type', direction).in('student_id', batch)
             : client.from('check_in_logs').select('student_id').eq('activity_id', activity.id).in('student_id', batch)
-        ]);
-        if (students.error || existing.error) throw new Error('ตรวจสอบข้อมูลกลางไม่สำเร็จ กรุณาลองใหม่');
-        studentRows.push(...(students.data || []));
-        for (const row of existing.data || []) existingIds.add(row.student_id);
+        ])));
+        for (const [students, existing] of responses) {
+          if (students.error || existing.error) throw new Error('ตรวจสอบข้อมูลกลางไม่สำเร็จ กรุณาลองใหม่');
+          studentRows.push(...(students.data || []));
+          for (const row of existing.data || []) existingIds.add(row.student_id);
+        }
+        setProgress(`ตรวจแล้ว ${Math.min((offset + 4) * 100, ids.length).toLocaleString('th-TH')} / ${ids.length.toLocaleString('th-TH')} รายการ`);
       }
       const names = new Map(studentRows.map(row => [row.id, row.name?.trim() || '']));
       setPreview(parsed.rows.map(row => ({
@@ -86,14 +103,14 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
       })));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'ตรวจสอบข้อมูลไม่สำเร็จ');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setProgress(''); }
   };
 
   const importRows = async () => {
     if (!preview || busy) return;
     const client = getSupabaseClient();
     if (!client || !navigator.onLine) { setError('ต้องออนไลน์ขณะนำเข้าข้อมูล'); return; }
-    setBusy(true); setError(''); setResult(null);
+    setBusy(true); setError(''); setResult(null); setProgress('กำลังนำเข้า...');
     const counts: ImportResult = {
       saved: 0,
       duplicate: preview.filter(row => row.status === 'duplicate').length,
@@ -111,7 +128,7 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
       const station = `นำเข้าจากเครื่องบันทึก · ${scannerStation}`.slice(0, 120);
       if (activity.scanMode === 'in_out') {
         // Reuse the same server-side checks and duplicate protection as live scanning.
-        for (const batch of chunks<PreviewRow>(ready, 5)) {
+        for (const [batchIndex, batch] of chunks<PreviewRow>(ready, 5).entries()) {
           const responses = await Promise.all(batch.map(async row => {
             try { return await recordActivityScan(activity.id, row.studentId, direction, 'usb', station); }
             catch { return { status: 'failed' as const }; }
@@ -126,10 +143,11 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
             else counts.failed++;
           }
           if (activityChanged) throw new Error('กิจกรรมปิดหรือเปลี่ยนวิธีสแกนระหว่างนำเข้า กรุณาตรวจผลที่บันทึกแล้ว');
+          setProgress(`ส่งแล้ว ${Math.min((batchIndex + 1) * 5, ready.length).toLocaleString('th-TH')} / ${ready.length.toLocaleString('th-TH')} รายการ`);
         }
       } else {
         // Insert only. Never upsert or update an existing attendance record.
-        for (const batch of chunks<PreviewRow>(ready, 50)) {
+        for (const [batchIndex, batch] of chunks<PreviewRow>(ready, 50).entries()) {
           const payload = batch.map(row => ({
             id: `chk_${activity.id}_${row.studentId}`,
             activity_id: activity.id, student_id: row.studentId,
@@ -137,7 +155,11 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
             staff_status: 'verified', exec_status: 'pending', scanner_station: station
           }));
           const { error: batchError } = await client.from('check_in_logs').insert(payload);
-          if (!batchError) { counts.saved += batch.length; continue; }
+          if (!batchError) {
+            counts.saved += batch.length;
+            setProgress(`ส่งแล้ว ${Math.min((batchIndex + 1) * 50, ready.length).toLocaleString('th-TH')} / ${ready.length.toLocaleString('th-TH')} รายการ`);
+            continue;
+          }
           // A concurrent scanner may have inserted one ID. Retry individually so
           // all other IDs are still imported without replacing that record.
           if (batchError.code !== '23505') { counts.failed += batch.length; continue; }
@@ -147,6 +169,7 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
             else if (rowError.code === '23505') counts.duplicate++;
             else counts.failed++;
           }
+          setProgress(`ส่งแล้ว ${Math.min((batchIndex + 1) * 50, ready.length).toLocaleString('th-TH')} / ${ready.length.toLocaleString('th-TH')} รายการ`);
         }
       }
       setResult(counts);
@@ -161,7 +184,7 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
         catch (cause) { console.warn('Attendance refresh after import failed:', cause); }
         window.dispatchEvent(new Event('db_updated'));
       }
-      setBusy(false);
+      setBusy(false); setProgress('');
     }
   };
 
@@ -171,7 +194,8 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
     <section className="space-y-4 rounded-xl border-2 border-[#18181B] bg-white p-4 font-['Prompt','Sarabun',sans-serif] sm:p-5" aria-label="นำเข้าจากเครื่องสแกนแบบมีหน่วยความจำ">
       <div>
         <h3 className="text-base font-bold text-[#0F172A]">นำเข้าจากเครื่องสแกนแบบมีหน่วยความจำ</h3>
-        <p className="mt-1 text-sm text-stone-700">เลือกไฟล์ที่ส่งออกจากเครื่อง หรือวางรหัสหลายบรรทัด ระบบจะตรวจรายชื่อและรายการซ้ำก่อนบันทึก</p>
+        <p className="mt-1 text-sm text-stone-700">รุ่น TPD20BG: คลิกช่องรับข้อมูลด้านล่าง แล้วกด Upload Data บนเครื่อง รายการจะถูกพิมพ์เข้าช่องนี้ทีละรายการ</p>
+        <p className="mt-1 text-xs text-stone-600">ถ้าเครื่องส่งข้อมูลเข้า Excel แทน ให้บันทึกเป็นไฟล์ Excel แล้วเลือกไฟล์ด้านล่าง ระบบจะไม่บันทึกเช็กอินอัตโนมัติระหว่างรับข้อมูล</p>
         <p className="mt-1 text-xs text-stone-600">กิจกรรม: {activity.name} · รายการใหม่ใช้เวลาที่นำเข้าเป็นเวลาบันทึก</p>
       </div>
       {activity.scanMode === 'in_out' && <fieldset>
@@ -193,13 +217,26 @@ export const StoredScannerImport: React.FC<StoredScannerImportProps> = ({ activi
       </label>
       <div className="text-center text-xs text-stone-500">หรือ</div>
       <label className="block text-sm font-bold text-stone-900">
-        วางรหัสจากเครื่อง (หนึ่งรายการต่อบรรทัด)
-        <textarea value={text} disabled={busy} rows={4} placeholder="วางข้อมูลที่นี่"
-          onChange={event => { setText(event.target.value); setParsed(null); setPreview(null); setResult(null); }}
+        รับข้อมูลจากเครื่อง / วางรหัส (หนึ่งรายการต่อบรรทัด)
+        <textarea ref={captureRef} disabled={busy} rows={5} placeholder="คลิกที่นี่ แล้วกด Upload Data บนเครื่องสแกน"
+          onFocus={() => setCaptureActive(true)} onBlur={() => setCaptureActive(false)}
+          onInput={markCaptureChanged}
+          onKeyDown={event => {
+            if (event.key === 'Tab') {
+              event.preventDefault();
+              event.currentTarget.setRangeText('\n', event.currentTarget.selectionStart, event.currentTarget.selectionEnd, 'end');
+              markCaptureChanged();
+            }
+          }}
           className="mt-2 w-full min-w-0 rounded-lg border border-stone-300 p-3 font-mono text-sm" />
       </label>
-      <button type="button" onClick={usePastedText} disabled={busy || !text.trim()}
-        className="min-h-11 rounded-lg border-2 border-[#18181B] bg-white px-6 py-3 text-sm font-bold disabled:opacity-50">อ่านข้อมูลที่วาง</button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => captureRef.current?.focus()} disabled={busy}
+          className="min-h-12 rounded-lg border-2 border-[#18181B] bg-white px-6 py-3 text-sm font-bold disabled:opacity-50">{captureActive ? 'กำลังรับข้อมูลจากเครื่อง' : 'เริ่มรับข้อมูลจากเครื่อง'}</button>
+        <button type="button" onClick={usePastedText} disabled={busy}
+          className="min-h-12 rounded-lg bg-[#EA580C] px-6 py-3 text-sm font-bold text-white disabled:opacity-50">ตรวจข้อมูลที่รับมา</button>
+      </div>
+      {progress && <p role="status" className="text-sm font-bold text-[#2563EB]">{progress}</p>}
       {parsed && <div className="space-y-2 rounded-lg bg-[#FAF9F6] p-3 text-sm text-stone-900">
         <p><strong>{sourceName}</strong>: รหัสไม่ซ้ำ {parsed.rows.length} รายการ · ซ้ำในไฟล์ {parsed.duplicateLines.length} · แถวที่อ่านไม่ได้ {parsed.invalidLines.length}</p>
         {parsed.invalidLines.length > 0 && <p className="text-xs text-amber-900">แถวที่อ่านไม่ได้: {parsed.invalidLines.slice(0, 12).join(', ')}{parsed.invalidLines.length > 12 ? '…' : ''} (ข้ามแถวเหล่านี้)</p>}

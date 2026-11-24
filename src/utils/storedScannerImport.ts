@@ -14,7 +14,7 @@ export interface ParsedStoredScannerFile {
 }
 
 const MAX_BYTES = 2 * 1024 * 1024;
-const MAX_ROWS = 2000;
+const MAX_ROWS = 20000;
 
 const parseCells = (records: unknown[][]): ParsedStoredScannerFile => {
   if (records.length > MAX_ROWS) throw new Error(`ไฟล์มีเกิน ${MAX_ROWS.toLocaleString('th-TH')} แถว กรุณาแบ่งไฟล์`);
